@@ -1,0 +1,139 @@
+/* Collapsed Chat Bubble */
+.chat-bubble {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background-color: #003366;
+    color: white;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    transition: transform 0.2s ease;
+}
+
+.chat-bubble:hover {
+    transform: scale(1.1);
+}
+
+/* Chat Window Container */
+.chat-container {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 500px;
+    height: 1000px;
+    background-color: white;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    overflow: hidden;
+}
+
+/* Chat Header */
+.chat-header {
+    background-color: #003366;
+    color: white;
+    padding: 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 1.1rem;
+}
+
+.close-icon {
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+
+.close-icon:hover {
+    transform: rotate(90deg);
+}
+
+/* Chat Messages */
+.chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1rem;
+    background-color: #f5f5f5;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem; /* Add spacing between messages */
+
+}
+
+.message {
+    margin-bottom: 1rem;
+    max-width: 80%;
+    word-wrap: break-word;
+    line-height: 1.5;
+}
+
+.message.user {
+    background-color: #004080;
+    color: white;
+    padding: 0.75rem;
+    border-radius: 8px;
+    margin-left: auto;
+}
+
+/* Bot Message Bubble */
+.message.bot {
+    background-color: #e0e0e0;
+    color: #000000;
+    margin-right: auto;
+    padding: 0.75rem;
+    border-radius: 8px;
+    word-wrap: break-word;
+    overflow-wrap: anywhere; /* Ensures long words wrap */
+    white-space: pre-wrap; /* Preserve line breaks and spaces */
+    font-family: Arial, sans-serif; /* Consistent font for readability */
+    line-height: 1.5; /* Better spacing between lines */
+    max-width: 90%; /* Prevent content from stretching too wide */
+    display: inline-block; /* Shrink the bubble size to fit the text */
+    box-sizing: border-box; /* Include padding and borders in width calculation */
+}
+
+/* Ordered List Styling for Bot Messages */
+.message.bot ol {
+    padding-left: 1.5rem; /* Indent ordered list */
+    margin: 0.5rem 0; /* Add vertical spacing */
+}
+
+.message.bot ol li {
+    margin-bottom: 0.5rem; /* Space between list items */
+}
+
+/* Chat Input */
+.chat-input {
+    display: flex;
+    padding: 1rem;
+    border-top: 1px solid #ccc;
+}
+
+.chat-input input {
+    flex: 1;
+    padding: 0.5rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+.chat-input button {
+    margin-left: 0.5rem;
+    background-color: #003366;
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.chat-input button:hover {
+    background-color: #004080;
+}
