@@ -18,6 +18,7 @@
     "@emotion/styled": "^11.14.0",
     "@mui/material": "^6.2.0",
     "cors": "^2.8.5",
+    "dompurify": "^3.2.3",
     "express": "^4.21.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"

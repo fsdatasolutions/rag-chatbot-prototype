@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import DOMPurify from 'dompurify'; // Library for sanitizing HTML content
 import './ChatWindow.css';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline'; // Material-UI icon
 import CloseIcon from '@mui/icons-material/Close'; // Close icon
@@ -35,7 +36,7 @@ function ChatWindow() {
             });
 
             const data = await response.json();
-            const botMessage = { role: 'bot', content: data.answer };
+            const botMessage = { role: 'bot', content: data.answer }; // Assume response contains sanitized HTML
             setMessages((prev) => [...prev, botMessage]);
         } catch (error) {
             console.error("Error fetching response:", error);
@@ -46,30 +47,6 @@ function ChatWindow() {
         } finally {
             setLoading(false);
         }
-    };
-
-    // Function to render messages with proper formatting
-    const renderMessage = (content) => {
-        return content.split('\n').map((line, idx) => {
-            const trimmedLine = line.trim();
-
-            // Skip empty lines
-            if (!trimmedLine) return null;
-
-            // Check for pre-existing numbering like "1. Text"
-            const hasPreNumbering = /^\d+\.\s/.test(trimmedLine);
-
-            if (hasPreNumbering) {
-                // Render as plain paragraph text if numbering already exists
-                return <p key={idx}>{trimmedLine}</p>;
-            } else if (line.startsWith('-')) {
-                // Render bullet points
-                return <li key={idx}>{trimmedLine.substring(1).trim()}</li>;
-            } else {
-                // Render regular text as paragraph
-                return <p key={idx}>{trimmedLine}</p>;
-            }
-        });
     };
 
     return (
@@ -90,9 +67,13 @@ function ChatWindow() {
                     </div>
                     <div className="chat-messages">
                         {messages.map((msg, idx) => (
-                            <div key={idx} className={`message ${msg.role}`}>
-                                {msg.role === 'bot' ? <div>{renderMessage(msg.content)}</div> : msg.content}
-                            </div>
+                            <div
+                                key={idx}
+                                className={`message ${msg.role}`}
+                                dangerouslySetInnerHTML={{
+                                    __html: msg.role === 'bot' ? DOMPurify.sanitize(msg.content) : msg.content,
+                                }}
+                            />
                         ))}
                         {loading && <div className="loading-spinner">Loading...</div>}
                         {/* Scroll Anchor */}
