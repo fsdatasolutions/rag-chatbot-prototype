@@ -1,13 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import DOMPurify from 'dompurify'; // Library for sanitizing HTML content
 import './ChatWindow.css';
-import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline'; // Material-UI icon
-import CloseIcon from '@mui/icons-material/Close'; // Close icon
 
 function ChatWindow() {
-    const [isChatOpen, setIsChatOpen] = useState(false);
-    const [messages, setMessages] = useState([]);
-    const [query, setQuery] = useState('');
+    const [messages, setMessages] = useState([
+        { role: 'bot', content: "Hi! I'm your virtual assistant. How can I help you today?" }
+    ]);    const [query, setQuery] = useState('');
     const [loading, setLoading] = useState(false);
 
     // Ref for scrolling to the bottom of the chat window
@@ -51,19 +49,12 @@ function ChatWindow() {
 
     return (
         <div>
-            {/* Collapsed Chat Bubble */}
-            {!isChatOpen && (
-                <div className="chat-bubble" onClick={() => setIsChatOpen(true)}>
-                    <ChatBubbleOutlineIcon fontSize="large" />
-                </div>
-            )}
+
 
             {/* Expanded Chat Window */}
-            {isChatOpen && (
                 <div className="chat-container">
                     <div className="chat-header">
-                        <span>Student Support Chatbot</span>
-                        <CloseIcon className="close-icon" onClick={() => setIsChatOpen(false)} />
+                        <span>Virtual Assistant</span>
                     </div>
                     <div className="chat-messages">
                         {messages.map((msg, idx) => (
@@ -92,7 +83,6 @@ function ChatWindow() {
                         </button>
                     </div>
                 </div>
-            )}
         </div>
     );
 }

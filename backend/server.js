@@ -53,7 +53,7 @@ app.post('/api/chat', async (req, res) => {
             .join('\n') || "No relevant documents found.";
 
         // Step 2: Construct input prompt with retrieved context
-        const inputPrompt = `System: You are a helpful student support assistant at the University of St. Augustine. Answer based on the provided context.\n\nContext:\n${context}\n\nHuman: ${query}\nAssistant:`;
+        const inputPrompt = `System: You are a helpful IT support assistant at the University of St. Augustine. Answer based on the provided context.\n\nContext:\n${context}\n\nHuman: ${query}\nAssistant:`;
 
         // Step 3: Invoke the model with the combined prompt
         const inputPayload = JSON.stringify({
