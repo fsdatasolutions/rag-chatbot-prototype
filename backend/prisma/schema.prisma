@@ -1,0 +1,71 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Account {
+  id             String          @id @default(uuid())
+  name           String
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  knowledgeBases KnowledgeBase[]
+  users          User[]
+  departments Department[]
+}
+
+// prisma/schema.prisma (updated models for dynamic departments)
+model KnowledgeBase {
+  id                     String   @id @default(uuid())
+  accountId              String
+  name                   String
+  bedrockKnowledgeBaseId String
+  description            String?
+  departmentId           String?
+  department             Department? @relation(fields: [departmentId], references: [id])
+  userAssignments        UserKnowledgeBase[]
+  account                Account  @relation(fields: [accountId], references: [id])
+  createdAt              DateTime @default(now())
+}
+
+model User {
+  id              String   @id @default(uuid())
+  accountId       String
+  email           String   @unique
+  passwordHash    String
+  role            UserRole
+  departmentId    String?
+  department      Department? @relation(fields: [departmentId], references: [id])
+  kbAssignments   UserKnowledgeBase[]
+  account         Account  @relation(fields: [accountId], references: [id])
+  createdAt       DateTime @default(now())
+}
+
+model Department {
+  id         String   @id @default(uuid())
+  name       String
+  accountId  String
+  account    Account  @relation(fields: [accountId], references: [id])
+  users      User[]
+  knowledgeBases KnowledgeBase[]
+  createdAt  DateTime @default(now())
+}
+
+model UserKnowledgeBase {
+  userId          String
+  knowledgeBaseId String
+  assignedAt      DateTime @default(now())
+
+  user            User          @relation(fields: [userId], references: [id])
+  knowledgeBase   KnowledgeBase @relation(fields: [knowledgeBaseId], references: [id])
+
+  @@id([userId, knowledgeBaseId])
+}
+
+enum UserRole {
+  admin
+  user
+}

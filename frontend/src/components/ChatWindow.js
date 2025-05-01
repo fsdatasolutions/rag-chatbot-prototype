@@ -1,3 +1,4 @@
+//frontend/src/componets/ChatWindow.js
 import React, { useState, useEffect, useRef } from 'react';
 import DOMPurify from 'dompurify'; // Library for sanitizing HTML content
 import './ChatWindow.css';

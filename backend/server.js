@@ -9,6 +9,9 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+require('dotenv').config();
+
+
 // Initialize Bedrock Runtime Client
 const bedrockRuntimeClient = new BedrockRuntimeClient({
     region: config.region,
@@ -83,6 +86,16 @@ app.post('/api/chat', async (req, res) => {
     }
 });
 
+// Middleware
+const authenticateToken = require('./middleware/auth');
+
+// Routes
+app.use('/api/auth', require('./routes/auth'));
+app.use('/api/account', require('./routes/account'));
+app.use('/api/users', require('./routes/users'));
+app.use('/api/chat', require('./routes/chat'));
+app.use('/api/knowledge-bases', require('./routes/knowledgeBase'));
+app.use('/api/departments', require('./routes/departments'));
 const PORT = process.env.PORT || 5001;
 app.listen(PORT, () => {
     console.log(`Backend server running on port ${PORT} using model ID: ${MODEL_ID}`);
