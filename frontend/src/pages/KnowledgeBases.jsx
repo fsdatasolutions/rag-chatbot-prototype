@@ -13,22 +13,29 @@ function KnowledgeBases() {
     const [error, setError] = useState('');
     const [allUsers, setAllUsers] = useState([]);
     const [departments, setDepartments] = useState([]);
+    const [kbs, setKbs] = useState([]);
+    console.log("TOKEN BEING SENT:", auth.token);
 
     useEffect(() => {
         const fetchData = async () => {
             try {
-                const [usersRes, deptsRes] = await Promise.all([
+                const [usersRes, deptsRes, kbsRes] = await Promise.all([
                     axios.get('http://localhost:5001/api/users', {
                         headers: { Authorization: `Bearer ${auth.token}` }
                     }),
                     axios.get('http://localhost:5001/api/departments', {
                         headers: { Authorization: `Bearer ${auth.token}` }
+                    }),
+                    axios.get('http://localhost:5001/api/knowledge-bases', {
+                        headers: { Authorization: `Bearer ${auth.token}` }
                     })
                 ]);
+
                 setAllUsers(usersRes.data);
                 setDepartments(deptsRes.data);
+                setKbs(kbsRes.data); // 👈 make sure you define this state: const [kbs, setKbs] = useState([]);
             } catch (err) {
-                console.error('Failed to load users or departments:', err);
+                console.error('Failed to load users, departments, or knowledge bases:', err);
             }
         };
         fetchData();
@@ -46,7 +53,7 @@ function KnowledgeBases() {
         setFiles(e.target.files);
     };
 
-    const handleExistingSubmit = (e) => {
+    const handleExistingSubmit = async (e) => {
         e.preventDefault();
         try {
             await axios.put(`http://localhost:5001/api/knowledge-bases/${existingForm.id}`, {
@@ -54,7 +61,7 @@ function KnowledgeBases() {
                 departmentId: existingForm.departmentId || null,
                 userIds: existingForm.users
             }, {
-                headers: { Authorization: `Bearer ${auth.token}` }
+                headers: {Authorization: `Bearer ${auth.token}`}
             });
             setSuccess('Knowledge base updated successfully');
             setError('');
@@ -67,7 +74,7 @@ function KnowledgeBases() {
         setError('');
     };
 
-    const handleNewSubmit = (e) => {
+    const handleNewSubmit = async (e) => {
         e.preventDefault();
         try {
             await axios.post('http://localhost:5001/api/knowledge-bases', {
@@ -77,22 +84,40 @@ function KnowledgeBases() {
                 departmentId: newForm.departmentId || null,
                 userIds: newForm.users
             }, {
-                headers: { Authorization: `Bearer ${auth.token}` }
+                headers: {Authorization: `Bearer ${auth.token}`}
             });
             setSuccess('New knowledge base created successfully');
             setError('');
+            console.log("Submitting KB:", {
+                name: newForm.description,
+                departmentId: newForm.departmentId,
+                userIds: newForm.users
+            });
         } catch (err) {
             console.error(err);
             setError('Failed to create knowledge base');
             setSuccess('');
         }
-        setSuccess('New knowledge base submitted (not yet wired to backend).');
+        setSuccess('New knowledge base created successfully');
         setError('');
     };
 
     return (
         <Container maxWidth="md">
             <Typography variant="h4" sx={{ mt: 4, mb: 2 }}>Knowledge Bases</Typography>
+            <Paper elevation={3} sx={{ p: 3, mt: 4 }}>
+                <Typography variant="h6" gutterBottom>Existing Knowledge Bases</Typography>
+                {kbs.map(kb => (
+                    <Box key={kb.id} sx={{ mb: 2, p: 2, border: '1px solid #ccc', borderRadius: 1 }}>
+                        <Typography variant="subtitle1"><strong>{kb.name}</strong></Typography>
+                        <Typography variant="body2">Description: {kb.description}</Typography>
+                        <Typography variant="body2">Department: {kb.department?.name || 'None'}</Typography>
+                        <Typography variant="body2">
+                            Users: {(kb.userAssignments || []).map(ua => ua.user?.email).join(', ') || 'None'}
+                        </Typography>
+                    </Box>
+                ))}
+            </Paper>
 
             <Paper elevation={3} sx={{ p: 3, mb: 4 }}>
                 <Typography variant="h6">Edit Existing Knowledge Base</Typography>

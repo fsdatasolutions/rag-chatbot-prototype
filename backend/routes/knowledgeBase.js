@@ -6,12 +6,22 @@ const authenticateToken = require('../middleware/auth');
 
 // GET all KBs for current account
 router.get('/', authenticateToken, async (req, res) => {
+
     try {
         const kbs = await prisma.knowledgeBase.findMany({
             where: { accountId: req.user.accountId },
-            include: { userAssignments: true },
+            include: {
+                department: true,
+                userAssignments: {
+                    include: {
+                        user: true
+                    }
+                }
+            },
             orderBy: { createdAt: 'desc' }
         });
+        console.log(JSON.stringify(kbs, null, 2));
+
         res.json(kbs);
     } catch (err) {
         console.error(err);
@@ -21,28 +31,31 @@ router.get('/', authenticateToken, async (req, res) => {
 
 // POST /api/knowledge-bases
 router.post('/', authenticateToken, async (req, res) => {
-    const { name, bedrockKnowledgeBaseId, description, department, userIds } = req.body;
-
-    if (req.user.role !== 'admin') {
-        return res.status(403).json({ error: 'Only admins can create knowledge bases' });
-    }
+    const { name, description, bedrockKnowledgeBaseId, userIds, departmentId } = req.body;
 
     try {
         const kb = await prisma.knowledgeBase.create({
             data: {
                 name,
-                bedrockKnowledgeBaseId,
                 description,
-                department,
+                bedrockKnowledgeBaseId,
                 accountId: req.user.accountId,
+                departmentId: departmentId || null,
                 userAssignments: {
-                    create: userIds?.map((userId) => ({ userId })) || []
+                    create: userIds?.map((userId) => ({
+                        user: { connect: { id: userId } }
+                    })) || []
                 }
+            },
+            include: {
+                department: true,
+                userAssignments: { include: { user: true } }
             }
         });
+
         res.status(201).json(kb);
     } catch (err) {
-        console.error(err);
+        console.error('Error creating knowledge base:', err);
         res.status(500).json({ error: 'Failed to create knowledge base' });
     }
 });
