@@ -11,8 +11,6 @@ const authenticateToken = (req, res, next) => {
         if (err) return res.sendStatus(403);
         req.user = user; // { userId, accountId, role }
         next();
-        console.log("REQ HEADERS:", req.headers);
-
     });
 };
 module.exports = authenticateToken;

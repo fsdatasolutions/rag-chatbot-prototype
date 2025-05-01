@@ -14,7 +14,6 @@ function KnowledgeBases() {
     const [allUsers, setAllUsers] = useState([]);
     const [departments, setDepartments] = useState([]);
     const [kbs, setKbs] = useState([]);
-    console.log("TOKEN BEING SENT:", auth.token);
 
     useEffect(() => {
         const fetchData = async () => {

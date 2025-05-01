@@ -93,6 +93,11 @@ ChatSession {
 
 ### 2. Update ChatWindow to Pass `account_id`
 - Include `account_id` in every POST to `/api/chat`.
+- 	•	✅ Only show KBs assigned to the user or their department
+     •	✅ Auto-select the available KB (with admin-configurable default)
+     •	✅ Persist chat history per user across sessions
+     •	✅ Use fixed models under the hood (admins only control)
+     •	✅ Enable file uploads and multi-turn conversation handling
 
 ### 3. Update Layout to Reflect Tenant Context
 - Header shows account name or logo.

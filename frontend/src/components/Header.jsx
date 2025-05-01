@@ -11,6 +11,7 @@ function Header() {
     const navigate = useNavigate();
     const { auth, logout } = useAuth();
     const [accountName, setAccountName] = useState('');
+    const [userEmail, setUserEmail] = useState('');
     const [drawerOpen, setDrawerOpen] = useState(false);
     const [anchorEl, setAnchorEl] = useState(null);
 
@@ -23,51 +24,69 @@ function Header() {
     };
 
     useEffect(() => {
-        const fetchAccountName = async () => {
-            if (auth.token) {
-                try {
-                    const res = await axios.get('http://localhost:5001/api/account', {
-                        headers: { Authorization: `Bearer ${auth.token}` }
-                    });
-                    setAccountName(res.data.name);
-                } catch (err) {
-                    console.error('Failed to load account name');
-                }
+        const fetchAccountAndUser = async () => {
+            if (!auth.token) return;
+
+            try {
+                // Fetch account name
+                const accountRes = await axios.get('http://localhost:5001/api/account', {
+                    headers: { Authorization: `Bearer ${auth.token}` }
+                });
+                setAccountName(accountRes.data.name);
+
+                // Fetch current user email
+                const userRes = await axios.get('http://localhost:5001/api/users/me', {
+                    headers: { Authorization: `Bearer ${auth.token}` }
+                });
+                setUserEmail(userRes.data.email);
+
+            } catch (err) {
+                console.error('Failed to load account or user info:', err);
             }
         };
-        fetchAccountName();
+
+        fetchAccountAndUser();
     }, [auth.token]);
 
     const sidebarItems = [
-        { label: 'Dashboard', path: '/dashboard', roles: ['admin', 'user'] },
+        // { label: 'Dashboard', path: '/dashboard', roles: ['admin', 'user'] },
         { label: 'Knowledge Bases', path: '/knowledge-bases', roles: ['admin'] },
         { label: 'Users', path: '/users', roles: ['admin'] },
-        { label: 'Departments', path: '/departments', roles: ['admin'] }
+        { label: 'Departments', path: '/departments', roles: ['admin'] },
+        { label: 'ChatWindow', path: '/chat', roles: ['admin'] }
+
     ];
 
     return (
         <AppBar position="static">
             <Toolbar sx={{ display: 'flex', justifyContent: 'space-between' }}>
                 <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    <IconButton color="inherit" edge="start" onClick={() => setDrawerOpen(true)}>
+                    {auth.user?.role === 'admin' && (
+
+                        <IconButton color="inherit" edge="start" onClick={() => setDrawerOpen(true)}>
                         <MenuIcon />
                     </IconButton>
-                    <Typography variant="h6" component={Link} to="/dashboard" style={{ color: '#fff', textDecoration: 'none', marginLeft: '8px' }}>
+                        )}
+                    <Typography variant="h6" component={Link} to="/" style={{ color: '#fff', textDecoration: 'none', marginLeft: '8px' }}>
                         Virtual Assistant
                     </Typography>
                     {auth.token && accountName && (
-                        <Typography variant="body2" sx={{ ml: 2, color: '#fff' }}>({accountName})</Typography>
+                        <Typography variant="body2" sx={{ ml: 2, color: '#fff', fontWeight: 'bold'  }}>{accountName}</Typography>
                     )}
                 </Box>
 
                 {auth.token ? (
-                    <Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <Typography variant="body2" sx={{ color: '#fff', mr: 1 }}>
+                            {userEmail}
+                        </Typography>
                         <IconButton color="inherit" onClick={handleMenu}>
-                            <AccountCircle />
+                            <AccountCircle sx={{ color: '#fff' }} />
                         </IconButton>
                         <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleClose}>
-                            <MenuItem onClick={() => { handleClose(); navigate('/dashboard'); }}>Dashboard</MenuItem>
-                            <MenuItem onClick={() => { handleClose(); logout(); }}>Logout</MenuItem>
+                            <MenuItem onClick={() => { handleClose(); logout(); navigate('/login'); }}>
+                                Logout
+                            </MenuItem>
                         </Menu>
                     </Box>
                 ) : (
@@ -87,7 +106,7 @@ function Header() {
                                 <ListItem button key={index} component={Link} to={item.path} onClick={() => setDrawerOpen(false)}>
                                     <ListItemText primary={item.label} />
                                 </ListItem>
-                            ))}
+                                ))}
                     </List>
                 </Box>
             </Drawer>

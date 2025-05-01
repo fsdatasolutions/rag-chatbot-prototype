@@ -20,7 +20,8 @@ function Login() {
             localStorage.setItem('authToken', res.data.token);
             setError('');
             toast.success('Logged in! Redirecting...');
-            setTimeout(() => window.location.href = '/dashboard', 1500);
+            // Redirecting to chatwindow
+            setTimeout(() => window.location.href = '/', 1500);
         } catch (err) {
             setError(err.response?.data?.error || 'Login failed');
         }
