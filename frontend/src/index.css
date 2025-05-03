@@ -26,3 +26,12 @@ code {
   position: relative; /* Make content appear above the background */
   z-index: 1;
 }
+
+img {
+  max-width: 100%;
+  margin: 10px 0;
+  border-radius: 4px;
+}
+ol {
+  padding-left: 20px;
+}

@@ -5,7 +5,8 @@ import { jwtDecode } from 'jwt-decode';
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
-    const [auth, setAuth] = useState({ token: null, userId: null, accountId: null, role: null });
+    const [auth, setAuth] = useState({ token: null, user: null });
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         const token = localStorage.getItem('authToken');
@@ -14,24 +15,27 @@ export const AuthProvider = ({ children }) => {
                 const decoded = jwtDecode(token);
                 setAuth({
                     token,
-                    userId: decoded.userId,
-                    accountId: decoded.accountId,
-                    role: decoded.role
+                    user: {
+                        userId: decoded.userId,
+                        accountId: decoded.accountId,
+                        role: decoded.role
+                    }
                 });
             } catch (err) {
                 console.error('Failed to decode token:', err);
                 localStorage.removeItem('authToken');
             }
         }
+        setLoading(false); // ✅ mark as done
     }, []);
 
     const logout = () => {
         localStorage.removeItem('authToken');
-        setAuth({ token: null, userId: null, accountId: null, role: null });
+        setAuth({ token: null, user: null  });
     };
 
     return (
-        <AuthContext.Provider value={{ auth, setAuth, logout }}>
+        <AuthContext.Provider value={{ auth, setAuth, logout, loading }}>
             {children}
         </AuthContext.Provider>
     );

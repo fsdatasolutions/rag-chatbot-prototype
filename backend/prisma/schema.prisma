@@ -15,6 +15,10 @@ model Account {
   knowledgeBases KnowledgeBase[]
   users          User[]
   departments Department[]
+  ChatMessage ChatMessage[]
+
+
+  ChatSession ChatSession[]
 }
 
 // prisma/schema.prisma (updated models for dynamic departments)
@@ -42,6 +46,9 @@ model User {
   kbAssignments   UserKnowledgeBase[]
   account         Account  @relation(fields: [accountId], references: [id])
   createdAt       DateTime @default(now())
+  ChatMessage     ChatMessage[]
+
+  ChatSession ChatSession[]
 }
 
 model Department {
@@ -68,4 +75,30 @@ model UserKnowledgeBase {
 enum UserRole {
   admin
   user
+}
+
+model ChatSession {
+  id        String        @id @default(uuid())
+  title     String
+  userId    String
+  accountId String
+  createdAt DateTime      @default(now())
+
+  messages  ChatMessage[]
+  user      User          @relation(fields: [userId], references: [id])
+  account   Account       @relation(fields: [accountId], references: [id])
+}
+
+model ChatMessage {
+  id         String   @id @default(uuid())
+  sessionId  String?
+  userId     String
+  accountId  String
+  role       String   // 'user' or 'assistant'
+  content    String
+  createdAt  DateTime @default(now())
+
+  session    ChatSession? @relation(fields: [sessionId], references: [id])
+  user       User        @relation(fields: [userId], references: [id])
+  account    Account     @relation(fields: [accountId], references: [id])
 }

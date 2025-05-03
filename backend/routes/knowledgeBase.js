@@ -29,6 +29,43 @@ router.get('/', authenticateToken, async (req, res) => {
     }
 });
 
+// GET /api/knowledge-bases/user-accessible
+router.get('/user-accessible', authenticateToken, async (req, res) => {
+    try {
+        const user = await prisma.user.findUnique({
+            where: { id: req.user.userId },
+            include: {
+                department: true,
+                kbAssignments: {
+                    include: { knowledgeBase: true }
+                }
+            }
+        });
+
+        const departmentId = user.departmentId;
+
+        const departmentKbs = await prisma.knowledgeBase.findMany({
+            where: {
+                accountId: req.user.accountId,
+                OR: [
+                    { departmentId },
+                    {
+                        userAssignments: {
+                            some: { userId: req.user.userId }
+                        }
+                    }
+                ]
+            }
+        });
+
+        res.json(departmentKbs);
+    } catch (err) {
+        console.error('Failed to fetch accessible KBs:', err);
+        res.status(500).json({ error: 'Failed to load accessible knowledge bases' });
+    }
+});
+
+
 // POST /api/knowledge-bases
 router.post('/', authenticateToken, async (req, res) => {
     const { name, description, bedrockKnowledgeBaseId, userIds, departmentId } = req.body;

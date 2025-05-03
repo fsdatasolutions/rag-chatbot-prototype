@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import DOMPurify from 'dompurify'; // Library for sanitizing HTML content
 import './ChatWindow.css';
 
-function ChatWindow() {
+function old_ChatWindow() {
     const [messages, setMessages] = useState([
         { role: 'bot', content: "Hi! I'm your virtual assistant. How can I help you today?" }
     ]);    const [query, setQuery] = useState('');

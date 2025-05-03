@@ -87,11 +87,11 @@ function KnowledgeBases() {
             });
             setSuccess('New knowledge base created successfully');
             setError('');
-            console.log("Submitting KB:", {
-                name: newForm.description,
-                departmentId: newForm.departmentId,
-                userIds: newForm.users
-            });
+            // console.log("Submitting KB:", {
+            //     name: newForm.description,
+            //     departmentId: newForm.departmentId,
+            //     userIds: newForm.users
+            // });
         } catch (err) {
             console.error(err);
             setError('Failed to create knowledge base');

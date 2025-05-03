@@ -67,11 +67,11 @@ function Header() {
                         <MenuIcon />
                     </IconButton>
                         )}
-                    <Typography variant="h6" component={Link} to="/" style={{ color: '#fff', textDecoration: 'none', marginLeft: '8px' }}>
-                        Virtual Assistant
-                    </Typography>
+                    {/*<Typography variant="h6" component={Link} to="/" style={{ color: '#fff', textDecoration: 'none', marginLeft: '8px' }}>*/}
+                    {/*    Virtual Assistant*/}
+                    {/*</Typography>*/}
                     {auth.token && accountName && (
-                        <Typography variant="body2" sx={{ ml: 2, color: '#fff', fontWeight: 'bold'  }}>{accountName}</Typography>
+                        <Typography variant="h6" component={Link} to="/"  style={{ color: '#fff', textDecoration: 'none', marginLeft: '8px' }}>{accountName}</Typography>
                     )}
                 </Box>
 
@@ -101,7 +101,7 @@ function Header() {
                 <Box sx={{ width: 250 }}>
                     <List>
                         {sidebarItems
-                            .filter((item) => item.roles.includes(auth.role))
+                            .filter((item) => item.roles.includes(auth.user?.role))
                             .map((item, index) => (
                                 <ListItem button key={index} component={Link} to={item.path} onClick={() => setDrawerOpen(false)}>
                                     <ListItemText primary={item.label} />
