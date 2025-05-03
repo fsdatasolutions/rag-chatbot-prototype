@@ -4,6 +4,7 @@ const router = express.Router();
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const prisma = require('../db/prisma');
+const { provisionTenantResources } = require('../aws/provisionTenantResources');
 
 // POST /api/auth/login
 router.post('/login', async (req, res) => {
@@ -54,6 +55,13 @@ router.post('/register', async (req, res) => {
                 }
             },
             include: { users: true }
+        });
+        // 🔧 Provision tenant AWS infra
+        const { bucketName } = await provisionTenantResources(account);
+        // add s3 bucket to account table.
+        await prisma.account.update({
+            where: { id: account.id },
+            data: { s3Bucket: bucketName }
         });
 
         const user = account.users[0];

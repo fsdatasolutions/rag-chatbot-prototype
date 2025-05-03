@@ -13,9 +13,10 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "@aws-sdk/client-bedrock": "^3.713.0",
+    "@aws-sdk/client-bedrock": "^3.800.0",
     "@aws-sdk/client-bedrock-agent-runtime": "^3.713.0",
     "@aws-sdk/client-bedrock-runtime": "^3.713.0",
+    "@aws-sdk/client-s3": "^3.802.0",
     "@aws-sdk/credential-provider-ini": "^3.712.0",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.0",
