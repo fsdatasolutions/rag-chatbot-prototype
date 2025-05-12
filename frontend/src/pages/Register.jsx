@@ -5,11 +5,15 @@ import { Box, Button, Container, TextField, Typography, Paper, Alert } from '@mu
 import { useNavigate } from 'react-router-dom';
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import ProvisioningModal from '../components/ProvisioningModal';
 
 function Register() {
     const [form, setForm] = useState({ email: '', password: '', accountName: '' });
     const [error, setError] = useState('');
     const navigate = useNavigate();
+
+    const [isProvisioning, setIsProvisioning] = useState(false);
+
 
     const handleChange = (e) => {
         setForm({ ...form, [e.target.name]: e.target.value });
@@ -17,18 +21,21 @@ function Register() {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        setIsProvisioning(true);
         try {
             await axios.post('http://localhost:5001/api/auth/register', form);
-            setError('');
             toast.success('Account created! Redirecting to login...');
             setTimeout(() => navigate('/login'), 2000);
         } catch (err) {
             setError(err.response?.data?.error || 'Registration failed');
+        } finally {
+            setIsProvisioning(false);
         }
     };
 
     return (
         <Container maxWidth="sm">
+            <ProvisioningModal show={isProvisioning} /> {/* 👈 Render modal here */}
             <ToastContainer />
             <Paper elevation={3} sx={{ padding: 4, mt: 8 }}>
                 <Typography variant="h4" gutterBottom>Create Account</Typography>

@@ -11,13 +11,14 @@ model Account {
   id             String          @id @default(uuid())
   name           String
   s3Bucket       String?
+  vectorStoreArn  String?
+  collectionEndpoint String?
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   knowledgeBases KnowledgeBase[]
   users          User[]
   departments Department[]
   ChatMessage ChatMessage[]
-
 
   ChatSession ChatSession[]
 }

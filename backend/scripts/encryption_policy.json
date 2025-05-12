@@ -1,0 +1,13 @@
+{
+  "name": "fsds-rag-encryption-policy",
+  "type": "encryption",
+  "policy": {
+    "Rules": [
+      {
+        "Resource": ["collection/kb-*"],
+        "ResourceType": "collection"
+      }
+    ],
+    "AWSOwnedKey": true
+  }
+}

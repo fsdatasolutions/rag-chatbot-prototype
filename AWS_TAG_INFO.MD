@@ -19,12 +19,12 @@ To enable cost allocation, access control, and operational visibility, we’ll u
 
 ### 🎯 Core Tags
 
-| Tag Key       | Example Value               | Description                                  |
-| ------------- | --------------------------- | -------------------------------------------- |
-| `TenantId`    | `tenant_abc123`             | Uniquely identifies the tenant               |
-| `Project`     | `fsds-rag`                  | The internal name of the application/project |
-| `Environment` | `prod`, `dev`, `staging`    | Tracks deployment environment                |
-| `Owner`       | `admin@fsdatasolutions.com` | Indicates who owns/created the resource      |
+| Tag Key       | Example Value                   | Description                                  |
+| ------------- |---------------------------------| -------------------------------------------- |
+| `TenantId`    | `tenant_abc123`                 | Uniquely identifies the tenant               |
+| `Project`     | `fsds-rag`                      | The internal name of the application/project |
+| `Environment` | `prod`, `dev`, `staging`        | Tracks deployment environment                |
+| `Owner`       | `aws_admin@fsdatasolutions.com` | Indicates who owns/created the resource      |
 
 ### 🧱 Additional Optional Tags
 

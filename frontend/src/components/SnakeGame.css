@@ -1,0 +1,25 @@
+/* src/components/SnakeGame.css */
+.snake-board {
+    display: grid;
+    grid-template-columns: repeat(20, 16px);
+    grid-template-rows: repeat(20, 16px);
+    gap: 1px;
+    margin: 0 auto;
+    width: max-content;
+    background-color: #222;
+    border: 2px solid #444;
+}
+
+.cell {
+    width: 16px;
+    height: 16px;
+    background-color: #eee;
+}
+
+.cell.snake {
+    background-color: #4caf50;
+}
+
+.cell.food {
+    background-color: #f44336;
+}

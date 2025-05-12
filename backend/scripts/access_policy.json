@@ -1,0 +1,17 @@
+[
+  {
+    "Rules": [
+      {
+        "Resource": ["index/kb-*/*"],
+        "ResourceType": "index",
+        "Permission": ["aoss:ReadDocument", "aoss:WriteDocument"]
+      },
+      {
+        "Resource": ["collection/kb-*"],
+        "ResourceType": "collection",
+        "Permission": ["aoss:DescribeCollectionItems"]
+      }
+    ],
+    "Principal": ["arn:aws:iam::181398284671:role/fsdsrag-bedrock-kb-role"]
+  }
+]

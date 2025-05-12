@@ -56,12 +56,17 @@ router.post('/register', async (req, res) => {
             },
             include: { users: true }
         });
+
         // 🔧 Provision tenant AWS infra
-        const { bucketName } = await provisionTenantResources(account);
-        // add s3 bucket to account table.
+        const { bucketName, vectorStoreArn } = await provisionTenantResources(account);
+
+        // 📝 Update account with provisioned AWS resources
         await prisma.account.update({
             where: { id: account.id },
-            data: { s3Bucket: bucketName }
+            data: {
+                s3Bucket: bucketName,
+                vectorStoreArn: vectorStoreArn
+            }
         });
 
         const user = account.users[0];
