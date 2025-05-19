@@ -43,8 +43,8 @@ const OWNER_EMAIL = process.env.OWNER_EMAIL || 'aws_admin@fsdatasolutions.com';
 const ENVIRONMENT = process.env.ENVIRONMENT || 'prod';
 const DEFAULT_MODEL_ARN = process.env.DEFAULT_EMBEDDING_MODEL ||
     'arn:aws:bedrock:us-west-2::foundation-model/amazon.titan-embed-text-v1';
-//const SERVICE_ROLE_ARN = `arn:aws:iam::${ACCOUNT_ID}:role/fsdsrag-bedrock-knowledgebase-role`;
-const SERVICE_ROLE_ARN = `arn:aws:iam::${ACCOUNT_ID}:role/fsdsrag-bedrock-kb-role`;
+const SERVICE_ROLE_ARN = `arn:aws:iam::${ACCOUNT_ID}:role/fsdsrag-bedrock-knowledgebase-role`;
+//const SERVICE_ROLE_ARN = `arn:aws:iam::${ACCOUNT_ID}:role/fsdsrag-bedrock-kb-role`;
 // Safely handle potentially undefined environment variables
 const SUBNET_IDS = process.env.AWS_SUBNET_IDS ? process.env.AWS_SUBNET_IDS.split(',') : [];
 const SECURITY_GROUP_IDS = process.env.AWS_SECURITY_GROUP_IDS ? process.env.AWS_SECURITY_GROUP_IDS.split(',') : [];
@@ -273,29 +273,68 @@ async function provisionTenantResources(account) {
         console.log(`✅ Created network policy for ${confirmedCollectionName}`);
 
 
+// // 6. Create data access policy
+//         // Create data access policy
+//         const dataAccessPolicyName = `dap-${confirmedCollectionName}`;
+//
+// // Define the list of IAM roles allowed to access the collection and index
+//         const allowedPrincipals = [
+//             `arn:aws:iam::${ACCOUNT_ID}:role/fsdsrag-bedrock-kb-role`,
+//            // `arn:aws:iam::${ACCOUNT_ID}:role/fsdsrag-bedrock-knowledgebase-role`
+//         ];
+//
+//         const dataAccessPolicyDocument = {
+//             Rules: [
+//                 {
+//                     ResourceType: "index",
+//                     //Resource: [`index/${resourceArn.split('/').pop()}/*`],
+//                     Resource: [`index/${confirmedCollectionName}/*`],
+//                     Permission: ["aoss:CreateIndex", "aoss:UpdateIndex", "aoss:*"]
+//                 },
+//                 {
+//                     ResourceType: "collection",
+//                     //Resource: [`collection/${resourceArn.split('/').pop()}`],
+//                     Resource: [`collection/${confirmedCollectionName}`],
+//                     Permission: ["aoss:CreateIndex", "aoss:UpdateIndex", "aoss:*"]
+//                 }
+//             ],
+//             Principal: allowedPrincipals
+//         };
+//
+//         const dataAccessPolicy = {
+//             name: dataAccessPolicyName,
+//             type: "data",
+//             description: `Data access policy for collection ${confirmedCollectionName}`,
+//             policy: JSON.stringify([dataAccessPolicyDocument])
+//         };
+//
+//         console.log("Data access policy being sent to AWS:");
+//         console.log(JSON.stringify(dataAccessPolicy, null, 2));
+//
+//         await opensearch.send(new CreateAccessPolicyCommand(dataAccessPolicy));
+//         createdResources.push({ type: 'dataAccessPolicy', name: dataAccessPolicyName });
+//         console.log(`✅ Created access policy for collection: ${confirmedCollectionName}`);
+//
+//
+//         await waitForPolicyPropagation(opensearch, dataAccessPolicyName,'data');
+
 // 6. Create data access policy
-        // Create data access policy
         const dataAccessPolicyName = `dap-${confirmedCollectionName}`;
 
 // Define the list of IAM roles allowed to access the collection and index
         const allowedPrincipals = [
             `arn:aws:iam::${ACCOUNT_ID}:role/fsdsrag-bedrock-kb-role`,
-           // `arn:aws:iam::${ACCOUNT_ID}:role/fsdsrag-bedrock-knowledgebase-role`
+            `arn:aws:iam::${ACCOUNT_ID}:role/fsdsrag-bedrock-knowledgebase-role` // Uncommented this to ensure both roles have access
         ];
 
+// For OpenSearch Serverless data access policies, we need to use the correct permissions and format
         const dataAccessPolicyDocument = {
             Rules: [
                 {
+                    // This covers all index operations including creation and updates
                     ResourceType: "index",
-                    //Resource: [`index/${resourceArn.split('/').pop()}/*`],
                     Resource: [`index/${confirmedCollectionName}/*`],
-                    Permission: ["aoss:*"]
-                },
-                {
-                    ResourceType: "collection",
-                    //Resource: [`collection/${resourceArn.split('/').pop()}`],
-                    Resource: [`collection/${confirmedCollectionName}`],
-                    Permission: ["aoss:*"]
+                    Permission: ["aoss:*"] // This includes all index operations
                 }
             ],
             Principal: allowedPrincipals
@@ -315,119 +354,128 @@ async function provisionTenantResources(account) {
         createdResources.push({ type: 'dataAccessPolicy', name: dataAccessPolicyName });
         console.log(`✅ Created access policy for collection: ${confirmedCollectionName}`);
 
+// Add extended wait for policy propagation
+        console.log('🕒 Waiting for extended policy propagation...');
+        await new Promise(resolve => setTimeout(resolve, 30000)); // 30-second additional delay
+        console.log('✅ Additional wait completed');
 
-        await waitForPolicyPropagation(opensearch, dataAccessPolicyName,'data');
+// Wait for policy propagation using your existing function
+        await waitForPolicyPropagation(opensearch, dataAccessPolicyName, 'data');
+
+// Add another delay after confirmation for good measure
+        console.log('🕒 Adding final policy propagation buffer...');
+        await new Promise(resolve => setTimeout(resolve, 15000)); // 15-second buffer
+        console.log('✅ Final wait completed - policies should be fully propagated');
 
 
-
-        ///////// Create vector Index ////////
-
-        async function createVectorIndex(endpoint, indexName, region = 'us-west-2') {
-            const cleanHost = endpoint.replace(/^https?:\/\//, '');
-
-            const bodyPayload = {
-                mappings: {
-                    properties: {
-                        vector_embedding: {
-                            type: 'knn_vector',
-                            dimension: 1536,
-                            method: {
-                                name: 'hnsw',
-                                space_type: 'cosinesimil',
-                                engine: 'faiss'
-                            }
-                        },
-                        text_chunk: { type: 'text' },
-                        metadata: { type: 'object' }
-                    }
-                }
-            };
-
-            const body = JSON.stringify(bodyPayload);
-            const path = `/${indexName}`;
-
-            console.log('🔍 Preparing request to create vector index...');
-            console.log('🔹 Endpoint Host:', cleanHost);
-            console.log('🔹 Request Path:', path);
-            console.log('🔹 Payload:', JSON.stringify(bodyPayload, null, 2));
-
-            const request = new HttpRequest({
-                method: 'PUT',
-                hostname: cleanHost,
-                path,
-                body,
-                headers: {
-                    'Content-Type': 'application/json',
-                    host: cleanHost
-                }
-            });
-
-            const signer = new SignatureV4({
-                credentials: fromTemporaryCredentials({
-                    params: {
-                        RoleArn: SERVICE_ROLE_ARN,
-                        RoleSessionName: 'fsds-local-index-writer'
-                    }
-                }),
-                region,
-                service: 'aoss',
-                sha256: Sha256
-            });
-
-            let signedRequest;
-            try {
-                signedRequest = await signer.sign(request);
-                console.log('✅ Signed request successfully');
-            } catch (signError) {
-                console.error('❌ Failed to sign request:', signError);
-                throw signError;
-            }
-
-            return new Promise((resolve, reject) => {
-                const req = https.request(
-                    {
-                        hostname: signedRequest.hostname,
-                        path: signedRequest.path,
-                        method: signedRequest.method,
-                        headers: signedRequest.headers
-                    },
-                    (res) => {
-                        let data = '';
-                        res.on('data', chunk => data += chunk);
-                        res.on('end', () => {
-                            console.log(`📡 Response Code: ${res.statusCode}`);
-                            console.log(`📡 Response Body: ${data}`);
-                            if (!data) {
-                                console.error("❌ No response body returned. Likely an IAM/auth issue.");
-                            }
-
-                            if (res.statusCode < 300) {
-                                console.log(`✅ Vector index created: ${indexName}`);
-                                resolve(JSON.parse(data));
-                            } else {
-                                console.error(`❌ Failed to create vector index: ${res.statusCode} - ${data}`);
-                                reject(new Error(`Failed to create vector index: ${res.statusCode} - ${data}`));
-                            }
-                        });
-                    }
-                );
-
-                req.on('error', (err) => {
-                    console.error('❌ HTTPS request error:', err);
-                    reject(err);
-                });
-
-                req.write(signedRequest.body || '');
-                req.end();
-            });
-        }
-        const indexName = `${confirmedCollectionName}-index`;
-        try {
-            console.log(`📌 Creating vector index in OpenSearch: ${indexName}`);
-            await createVectorIndex(collection.collectionEndpoint, indexName, REGION);
-        } catch (err) {
-            console.error(`⚠️ Skipped manual index creation:`, err.message);
-        }
+        // ///////// Create vector Index ////////
+        //
+        // async function createVectorIndex(endpoint, indexName, region = 'us-west-2') {
+        //     const cleanHost = endpoint.replace(/^https?:\/\//, '');
+        //
+        //     const bodyPayload = {
+        //         mappings: {
+        //             properties: {
+        //                 vector_embedding: {
+        //                     type: 'knn_vector',
+        //                     dimension: 1536,
+        //                     method: {
+        //                         name: 'hnsw',
+        //                         space_type: 'cosinesimil',
+        //                         engine: 'faiss'
+        //                     }
+        //                 },
+        //                 text_chunk: { type: 'text' },
+        //                 metadata: { type: 'object' }
+        //             }
+        //         }
+        //     };
+        //
+        //     const body = JSON.stringify(bodyPayload);
+        //     const path = `/${indexName}`;
+        //
+        //     console.log('🔍 Preparing request to create vector index...');
+        //     console.log('🔹 Endpoint Host:', cleanHost);
+        //     console.log('🔹 Request Path:', path);
+        //     console.log('🔹 Payload:', JSON.stringify(bodyPayload, null, 2));
+        //
+        //     const request = new HttpRequest({
+        //         method: 'PUT',
+        //         hostname: cleanHost,
+        //         path,
+        //         body,
+        //         headers: {
+        //             'Content-Type': 'application/json',
+        //             host: cleanHost
+        //         }
+        //     });
+        //
+        //     // Use direct credentials instead of assuming a role
+        //     const signer = new SignatureV4({
+        //         credentials: defaultProvider(), // Use current credentials
+        //         region,
+        //         service: 'aoss',
+        //         sha256: Sha256
+        //     });
+        //
+        //     let signedRequest;
+        //     try {
+        //         signedRequest = await signer.sign(request);
+        //         console.log('✅ Signed request successfully');
+        //     } catch (signError) {
+        //         console.error('❌ Failed to sign request:', signError);
+        //         throw signError;
+        //     }
+        //
+        //     // Add logging of request headers for debugging
+        //     console.log('🔍 Request headers:', JSON.stringify(signedRequest.headers, null, 2));
+        //
+        //     return new Promise((resolve, reject) => {
+        //         const req = https.request(
+        //             {
+        //                 hostname: signedRequest.hostname,
+        //                 path: signedRequest.path,
+        //                 method: signedRequest.method,
+        //                 headers: signedRequest.headers
+        //             },
+        //             (res) => {
+        //                 let data = '';
+        //                 res.on('data', chunk => data += chunk);
+        //                 res.on('end', () => {
+        //                     console.log(`📡 Response Code: ${res.statusCode}`);
+        //                     console.log(`📡 Response Headers:`, JSON.stringify(res.headers, null, 2));
+        //                     console.log(`📡 Response Body: ${data}`);
+        //
+        //                     if (!data) {
+        //                         console.error("❌ No response body returned. Likely an IAM/auth issue.");
+        //                     }
+        //
+        //                     if (res.statusCode < 300) {
+        //                         console.log(`✅ Vector index created: ${indexName}`);
+        //                         resolve(data ? JSON.parse(data) : {});
+        //                     } else {
+        //                         console.error(`❌ Failed to create vector index: ${res.statusCode} - ${data}`);
+        //                         reject(new Error(`Failed to create vector index: ${res.statusCode} - ${data}`));
+        //                     }
+        //                 });
+        //             }
+        //         );
+        //
+        //         req.on('error', (err) => {
+        //             console.error('❌ HTTPS request error:', err);
+        //             reject(err);
+        //         });
+        //
+        //         req.write(signedRequest.body || '');
+        //         req.end();
+        //     });
+        // }        const indexName = `${confirmedCollectionName}-index`;
+        // try {
+        //     console.log(`📌 Creating vector index in OpenSearch: ${indexName}`);
+        //     await createVectorIndex(collection.collectionEndpoint, indexName, REGION);
+        // } catch (err) {
+        //     console.error(`⚠️ Skipped manual index creation:`, err.message);
+        // }
 
         // 7. Create welcome document
         const welcomeContent = `# Welcome to Your Knowledge Base
@@ -460,9 +508,25 @@ For: ${account.name}
 
 
         // 9. Create the default knowledge base
+        console.log(`📝 Knowledge base configuration:`);
+        const defaultKbName = `kb-${account.name}`.toLowerCase().replace(/[^a-z0-9_-]/gi, '-').slice(0, 100);
+
+        console.log(JSON.stringify({
+            name: defaultKbName,
+            roleArn: SERVICE_ROLE_ARN,
+            storageConfiguration: {
+                type: 'OPENSEARCH_SERVERLESS',
+                opensearchServerlessConfiguration: {
+                    collectionArn: collection.arn,
+                    vectorIndexName: `${confirmedCollectionName}-index`
+                }
+            }
+        }, null, 2));
+
+// Then proceed with the knowledge base creation
 
         console.log("Creating knowledge base with parameters:");
-        const defaultKbName = `kb-${account.name}`.toLowerCase().replace(/[^a-z0-9_-]/gi, '-').slice(0, 100);
+        console.log(`Using service role: ${SERVICE_ROLE_ARN}`);backend/aws/provisionTenantResources.js
         console.log(JSON.stringify({
             name: defaultKbName,
             description: `Default knowledge base for ${account.name}`,
