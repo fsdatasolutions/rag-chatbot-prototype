@@ -57,15 +57,31 @@ router.post('/register', async (req, res) => {
             include: { users: true }
         });
 
-        // 🔧 Provision tenant AWS infra
-        const { bucketName, vectorStoreArn } = await provisionTenantResources(account);
+        // 🔧 Provision tenant AWS infra and create default knowledge base
+        const {
+            bucketName,
+            vectorStoreArn,
+            collectionEndpoint,
+            defaultKnowledgeBase
+        } = await provisionTenantResources(account);
 
         // 📝 Update account with provisioned AWS resources
         await prisma.account.update({
             where: { id: account.id },
             data: {
                 s3Bucket: bucketName,
-                vectorStoreArn: vectorStoreArn
+                vectorStoreArn: vectorStoreArn,
+                collectionEndpoint: collectionEndpoint
+            }
+        });
+
+        // Create the knowledge base record in the database
+        await prisma.knowledgeBase.create({
+            data: {
+                accountId: account.id,
+                name: defaultKnowledgeBase.name,
+                bedrockKnowledgeBaseId: defaultKnowledgeBase.bedrockKnowledgeBaseId,
+                description: `Default knowledge base for ${accountName}`
             }
         });
 

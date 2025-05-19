@@ -8,9 +8,10 @@ const {
 const {
     OpenSearchServerlessClient,
     CreateCollectionCommand,
+    CreateAccessPolicyCommand,
     BatchGetCollectionCommand,
     CreateSecurityPolicyCommand,
-    TagResourceCommand
+    TagResourceCommand, ListAccessPoliciesCommand
 } = require('@aws-sdk/client-opensearchserverless');
 const {
     EC2Client,
@@ -18,22 +19,41 @@ const {
     DescribeVpcEndpointsCommand
 } = require('@aws-sdk/client-ec2');
 
+const {
+    BedrockAgentClient,
+    CreateKnowledgeBaseCommand,
+    CreateDataSourceCommand,
+    StartIngestionJobCommand
+} = require('@aws-sdk/client-bedrock-agent');
+const {waitForPolicyPropagation} = require("./utils");
+
+const https = require('https');
+const { SignatureV4 } = require('@aws-sdk/signature-v4');
+const { fromEnv } = require('@aws-sdk/credential-provider-env');
+const { fromTemporaryCredentials } = require('@aws-sdk/credential-providers');
+
+const { defaultProvider } = require('@aws-sdk/credential-provider-node');
+const { Sha256 } = require('@aws-crypto/sha256-js');
+const { HttpRequest } = require('@aws-sdk/protocol-http');
+
 const REGION = process.env.AWS_REGION;
 const ACCOUNT_ID = process.env.AWS_ACCOUNT_ID;
 const VPC_ID = process.env.AWS_VPC_ID;
 const OWNER_EMAIL = process.env.OWNER_EMAIL || 'aws_admin@fsdatasolutions.com';
 const ENVIRONMENT = process.env.ENVIRONMENT || 'prod';
-
+const DEFAULT_MODEL_ARN = process.env.DEFAULT_EMBEDDING_MODEL ||
+    'arn:aws:bedrock:us-west-2::foundation-model/amazon.titan-embed-text-v1';
+//const SERVICE_ROLE_ARN = `arn:aws:iam::${ACCOUNT_ID}:role/fsdsrag-bedrock-knowledgebase-role`;
+const SERVICE_ROLE_ARN = `arn:aws:iam::${ACCOUNT_ID}:role/fsdsrag-bedrock-kb-role`;
 // Safely handle potentially undefined environment variables
 const SUBNET_IDS = process.env.AWS_SUBNET_IDS ? process.env.AWS_SUBNET_IDS.split(',') : [];
 const SECURITY_GROUP_IDS = process.env.AWS_SECURITY_GROUP_IDS ? process.env.AWS_SECURITY_GROUP_IDS.split(',') : [];
-
 // Check if we have the necessary VPC configuration
 const hasVpcConfig = VPC_ID && SUBNET_IDS.length > 0 && SECURITY_GROUP_IDS.length > 0;
-
 const s3 = new S3Client({ region: REGION });
 const opensearch = new OpenSearchServerlessClient({ region: REGION });
 const ec2 = hasVpcConfig ? new EC2Client({ region: REGION }) : null;
+const bedrock = new BedrockAgentClient({ region: REGION });
 
 // Helper function to create standard tags
 function createResourceTags(tenantId) {
@@ -54,6 +74,16 @@ function createS3Tags(tenantId) {
             { Key: 'Environment', Value: ENVIRONMENT },
             { Key: 'Owner', Value: OWNER_EMAIL }
         ]
+    };
+}
+
+// Helper function to create tag object for Bedrock resources
+function createBedrockTags(tenantId) {
+    return {
+        'TenantId': tenantId,
+        'Project': 'fsds-rag',
+        'Environment': ENVIRONMENT,
+        'Owner': OWNER_EMAIL
     };
 }
 
@@ -108,31 +138,14 @@ async function provisionTenantResources(account) {
         await opensearch.send(new CreateCollectionCommand({
             name: collectionName,
             type: 'VECTORSEARCH',
-            // Enable AWS owned KMS key encryption by default (you can also specify customer managed key)
-            securityConfig: {
-                samlOptions: {
-                    enabled: false
-                }
-            }
+            standalone: true
         }));
+
         createdResources.push({ type: 'opensearchCollection', name: collectionName });
-
-        // Tag the collection
-        const resourceArn = `arn:aws:aoss:${REGION}:${ACCOUNT_ID}:collection/${collectionName}`;
-        const standardTags = {};
-        createResourceTags(tenantId).forEach(tag => {
-            standardTags[tag.Key] = tag.Value;
-        });
-
-        await opensearch.send(new TagResourceCommand({
-            resourceArn,
-            tags: standardTags
-        }));
-
         console.log(`✅ Sent request to create collection: ${collectionName}`);
 
         // 3. Wait for the collection to be available
-        const MAX_RETRIES = 20;
+        const MAX_RETRIES = 100;
         const RETRY_DELAY_MS = 3000;
 
         let collection;
@@ -152,121 +165,406 @@ async function provisionTenantResources(account) {
             throw new Error(`Collection not active after ${MAX_RETRIES} retries: ${collectionName} (status: ${collection?.status})`);
         }
 
-        // 4. Create VPC endpoint only if VPC configuration is available
-        let vpcEndpointId = null;
+        // Tag the collection
 
-        if (hasVpcConfig) {
-            console.log("VPC configuration found. Setting up VPC endpoint...");
+        const resourceArn = collection.arn; // ✅ this is the correct full ARN with collection ID
+        const confirmedCollectionName = collection.name;
+        // Create tags in the correct format for OpenSearch Serverless
+        const ossTags = createResourceTags(tenantId).map(tag => ({
+            key: tag.Key,
+            value: tag.Value
+        }));
 
-            // Check if a VPC endpoint for OpenSearch Serverless already exists
-            const describeEndpointsResponse = await ec2.send(new DescribeVpcEndpointsCommand({
-                Filters: [
-                    {
-                        Name: 'vpc-id',
-                        Values: [VPC_ID]
-                    },
-                    {
-                        Name: 'service-name',
-                        Values: [`com.amazonaws.${REGION}.aoss`]
-                    }
-                ]
-            }));
-
-            if (describeEndpointsResponse.VpcEndpoints && describeEndpointsResponse.VpcEndpoints.length > 0) {
-                vpcEndpointId = describeEndpointsResponse.VpcEndpoints[0].VpcEndpointId;
-                console.log(`✅ Using existing VPC endpoint: ${vpcEndpointId}`);
-            } else {
-                // Create a new VPC endpoint with tags
-                const createEndpointResponse = await ec2.send(new CreateVpcEndpointCommand({
-                    VpcId: VPC_ID,
-                    ServiceName: `com.amazonaws.${REGION}.aoss`,
-                    SubnetIds: SUBNET_IDS,
-                    SecurityGroupIds: SECURITY_GROUP_IDS,
-                    VpcEndpointType: 'Interface',
-                    PrivateDnsEnabled: true,
-                    TagSpecifications: [
-                        {
-                            ResourceType: 'vpc-endpoint',
-                            Tags: createResourceTags(tenantId)
-                        }
-                    ]
-                }));
-
-                vpcEndpointId = createEndpointResponse.VpcEndpoint.VpcEndpointId;
-                createdResources.push({ type: 'vpcEndpoint', id: vpcEndpointId });
-                console.log(`✅ Created new VPC endpoint: ${vpcEndpointId}`);
-            }
-        } else {
-            console.log("⚠️ VPC configuration not complete. Skipping VPC endpoint creation.");
+        for (const tag of createResourceTags(tenantId)) {
+            ossTags[tag.Key] = tag.Value;
         }
 
-        // 5. Create network policy with or without VPC endpoint
-        const networkPolicyName = `net-${collectionName}`;
-        const networkPolicyConfig = {
-            AllowFromPublic: !vpcEndpointId, // Allow public access if no VPC endpoint
-            SourceVPCEs: vpcEndpointId ? [vpcEndpointId] : [],
-            SourceServices: ["bedrock.amazonaws.com"], // Always allow Bedrock
-            Rules: [
-                {
-                    ResourceType: "collection",
-                    Resource: [`collection/${collectionName}`]
-                },
-                {
-                    ResourceType: "dashboard",
-                    Resource: [`collection/${collectionName}`]
-                }
-            ]
-        };
+        console.log(`✅ createResourceTags:`, ossTags);
 
+        await opensearch.send(new TagResourceCommand({
+            resourceArn,
+            tags: ossTags
+        }));
+
+        // 4. Create VPC endpoint only if VPC configuration is available
+        console.log(`✅ Starting step 4: VPC endpoint provisioning`);
+        console.log('hasVpcConfig:',hasVpcConfig)
+
+        let vpcEndpointId = null;
+
+        // commenting out while vpc endpoint not available in region
+        // if (hasVpcConfig) {
+        //     try {
+        //         console.log(`🔍 Checking for existing VPC endpoint in VPC: ${VPC_ID}`);
+        //
+        //         const describeEndpointsResponse = await ec2.send(new DescribeVpcEndpointsCommand({
+        //             Filters: [
+        //                 { Name: 'vpc-id', Values: [VPC_ID] },
+        //                 { Name: 'service-name', Values: [`com.amazonaws.${REGION}.aoss`] }
+        //             ]
+        //         }));
+        //
+        //         const endpoints = describeEndpointsResponse?.VpcEndpoints || [];
+        //         const availableEndpoint = endpoints.find(ep => ep.State === 'available');
+        //
+        //         if (availableEndpoint) {
+        //             vpcEndpointId = availableEndpoint.VpcEndpointId;
+        //             console.log(`✅ Using existing VPC endpoint: ${vpcEndpointId}`);
+        //         } else {
+        //             console.log(`➕ No available VPC endpoint found. Creating a new one...`);
+        //
+        //             const createEndpointResponse = await ec2.send(new CreateVpcEndpointCommand({
+        //                 VpcId: VPC_ID,
+        //                 ServiceName: `com.amazonaws.${REGION}.aoss`,
+        //                 SubnetIds: SUBNET_IDS,
+        //                 SecurityGroupIds: SECURITY_GROUP_IDS,
+        //                 VpcEndpointType: 'Interface',
+        //                 PrivateDnsEnabled: true,
+        //                 TagSpecifications: [
+        //                     {
+        //                         ResourceType: 'vpc-endpoint',
+        //                         Tags: createResourceTags(tenantId)
+        //                     }
+        //                 ]
+        //             }));
+        //
+        //             vpcEndpointId = createEndpointResponse?.VpcEndpoint?.VpcEndpointId;
+        //             if (!vpcEndpointId) {
+        //                 throw new Error('Failed to retrieve new VPC endpoint ID');
+        //             }
+        //
+        //             createdResources.push({ type: 'vpcEndpoint', id: vpcEndpointId });
+        //             console.log(`✅ Created new VPC endpoint: ${vpcEndpointId}`);
+        //         }
+        //     } catch (err) {
+        //         console.error(`❌ Error during VPC endpoint setup:`, err);
+        //         throw err;
+        //     }
+        // } else {
+        //     console.warn(`⚠️ VPC configuration is missing or incomplete. Skipping VPC endpoint creation.`);
+        // }
+
+// 5. Create network policy with fallback to public access if no VPC endpoint
+        const networkPolicyName = `net-${confirmedCollectionName}`;
         const networkPolicy = {
             name: networkPolicyName,
             type: 'network',
-            description: `Network policy for collection ${collectionName}`,
-            policy: JSON.stringify([networkPolicyConfig])
-        };
-
-        await opensearch.send(new CreateSecurityPolicyCommand(networkPolicy));
-        createdResources.push({ type: 'networkPolicy', name: networkPolicyName });
-        console.log(`✅ Created network policy for ${collectionName}`);
-
-        // 6. Create data access policy (we're using the IAM role from your policy)
-        const dataAccessPolicyName = `dap-${collectionName}`;
-        const dataAccessPolicy = {
-            name: dataAccessPolicyName,
-            type: 'data',
-            description: `Data access policy for collection ${collectionName}`,
+            description: `Network policy for collection ${confirmedCollectionName}`,
             policy: JSON.stringify([
                 {
+                    AllowFromPublic: false,
+                    SourceServices: ["bedrock.amazonaws.com"],
                     Rules: [
                         {
-                            ResourceType: "index",
-                            Resource: [`index/${collectionName}/*`],
-                            Permission: ["aoss:*"]
-                        },
-                        {
                             ResourceType: "collection",
-                            Resource: [`collection/${collectionName}`],
-                            Permission: ["aoss:*"]
+                            //Resource: [`collection/${resourceArn.split('/').pop()}`]
+                            Resource: [`collection/${confirmedCollectionName}`]
                         }
-                    ],
-                    // Use specific IAM role instead of wildcard "*"
-                    Principal: [
-                        `arn:aws:iam::${ACCOUNT_ID}:role/fsdsrag-bedrock-kb-role`,
-                        `arn:aws:iam::${ACCOUNT_ID}:role/fsdsrag-bedrock-knowledgebase-role`
                     ]
                 }
             ])
         };
 
-        await opensearch.send(new CreateSecurityPolicyCommand(dataAccessPolicy));
-        createdResources.push({ type: 'dataAccessPolicy', name: dataAccessPolicyName });
-        console.log(`✅ Created data access policy for ${collectionName}`);
+        console.log("Network policy being sent to AWS:");
+        console.log(JSON.stringify(networkPolicy, null, 2));
 
+        await opensearch.send(new CreateSecurityPolicyCommand(networkPolicy));
+        createdResources.push({ type: 'networkPolicy', name: networkPolicyName });
+        console.log(`✅ Created network policy for ${confirmedCollectionName}`);
+
+
+// 6. Create data access policy
+        // Create data access policy
+        const dataAccessPolicyName = `dap-${confirmedCollectionName}`;
+
+// Define the list of IAM roles allowed to access the collection and index
+        const allowedPrincipals = [
+            `arn:aws:iam::${ACCOUNT_ID}:role/fsdsrag-bedrock-kb-role`,
+           // `arn:aws:iam::${ACCOUNT_ID}:role/fsdsrag-bedrock-knowledgebase-role`
+        ];
+
+        const dataAccessPolicyDocument = {
+            Rules: [
+                {
+                    ResourceType: "index",
+                    //Resource: [`index/${resourceArn.split('/').pop()}/*`],
+                    Resource: [`index/${confirmedCollectionName}/*`],
+                    Permission: ["aoss:*"]
+                },
+                {
+                    ResourceType: "collection",
+                    //Resource: [`collection/${resourceArn.split('/').pop()}`],
+                    Resource: [`collection/${confirmedCollectionName}`],
+                    Permission: ["aoss:*"]
+                }
+            ],
+            Principal: allowedPrincipals
+        };
+
+        const dataAccessPolicy = {
+            name: dataAccessPolicyName,
+            type: "data",
+            description: `Data access policy for collection ${confirmedCollectionName}`,
+            policy: JSON.stringify([dataAccessPolicyDocument])
+        };
+
+        console.log("Data access policy being sent to AWS:");
+        console.log(JSON.stringify(dataAccessPolicy, null, 2));
+
+        await opensearch.send(new CreateAccessPolicyCommand(dataAccessPolicy));
+        createdResources.push({ type: 'dataAccessPolicy', name: dataAccessPolicyName });
+        console.log(`✅ Created access policy for collection: ${confirmedCollectionName}`);
+
+
+        await waitForPolicyPropagation(opensearch, dataAccessPolicyName,'data');
+
+
+
+        ///////// Create vector Index ////////
+
+        async function createVectorIndex(endpoint, indexName, region = 'us-west-2') {
+            const cleanHost = endpoint.replace(/^https?:\/\//, '');
+
+            const bodyPayload = {
+                mappings: {
+                    properties: {
+                        vector_embedding: {
+                            type: 'knn_vector',
+                            dimension: 1536,
+                            method: {
+                                name: 'hnsw',
+                                space_type: 'cosinesimil',
+                                engine: 'faiss'
+                            }
+                        },
+                        text_chunk: { type: 'text' },
+                        metadata: { type: 'object' }
+                    }
+                }
+            };
+
+            const body = JSON.stringify(bodyPayload);
+            const path = `/${indexName}`;
+
+            console.log('🔍 Preparing request to create vector index...');
+            console.log('🔹 Endpoint Host:', cleanHost);
+            console.log('🔹 Request Path:', path);
+            console.log('🔹 Payload:', JSON.stringify(bodyPayload, null, 2));
+
+            const request = new HttpRequest({
+                method: 'PUT',
+                hostname: cleanHost,
+                path,
+                body,
+                headers: {
+                    'Content-Type': 'application/json',
+                    host: cleanHost
+                }
+            });
+
+            const signer = new SignatureV4({
+                credentials: fromTemporaryCredentials({
+                    params: {
+                        RoleArn: SERVICE_ROLE_ARN,
+                        RoleSessionName: 'fsds-local-index-writer'
+                    }
+                }),
+                region,
+                service: 'aoss',
+                sha256: Sha256
+            });
+
+            let signedRequest;
+            try {
+                signedRequest = await signer.sign(request);
+                console.log('✅ Signed request successfully');
+            } catch (signError) {
+                console.error('❌ Failed to sign request:', signError);
+                throw signError;
+            }
+
+            return new Promise((resolve, reject) => {
+                const req = https.request(
+                    {
+                        hostname: signedRequest.hostname,
+                        path: signedRequest.path,
+                        method: signedRequest.method,
+                        headers: signedRequest.headers
+                    },
+                    (res) => {
+                        let data = '';
+                        res.on('data', chunk => data += chunk);
+                        res.on('end', () => {
+                            console.log(`📡 Response Code: ${res.statusCode}`);
+                            console.log(`📡 Response Body: ${data}`);
+                            if (!data) {
+                                console.error("❌ No response body returned. Likely an IAM/auth issue.");
+                            }
+
+                            if (res.statusCode < 300) {
+                                console.log(`✅ Vector index created: ${indexName}`);
+                                resolve(JSON.parse(data));
+                            } else {
+                                console.error(`❌ Failed to create vector index: ${res.statusCode} - ${data}`);
+                                reject(new Error(`Failed to create vector index: ${res.statusCode} - ${data}`));
+                            }
+                        });
+                    }
+                );
+
+                req.on('error', (err) => {
+                    console.error('❌ HTTPS request error:', err);
+                    reject(err);
+                });
+
+                req.write(signedRequest.body || '');
+                req.end();
+            });
+        }
+        const indexName = `${confirmedCollectionName}-index`;
+        try {
+            console.log(`📌 Creating vector index in OpenSearch: ${indexName}`);
+            await createVectorIndex(collection.collectionEndpoint, indexName, REGION);
+        } catch (err) {
+            console.error(`⚠️ Skipped manual index creation:`, err.message);
+        }
+
+        // 7. Create welcome document
+        const welcomeContent = `# Welcome to Your Knowledge Base
+
+This is your default knowledge base for ${account.name}.
+
+## Getting Started
+1. Upload documents through the web interface
+2. Ask questions to leverage your knowledge base
+3. Customize your knowledge base in the settings
+
+## Quick Tips
+- Try to upload documents with clearly defined sections
+- You can organize documents by department
+- Use keywords in your questions for better results
+
+Created on: ${new Date().toISOString()}
+For: ${account.name}
+`;
+
+        await s3.send(new PutObjectCommand({
+            Bucket: bucketName,
+            Key: 'welcome.md',
+            Body: welcomeContent,
+            ContentType: 'text/markdown',
+            Tagging: `TenantId=${tenantId}&Project=fsds-rag&Environment=${ENVIRONMENT}&Owner=${encodeURIComponent(OWNER_EMAIL)}`
+        }));
+        console.log(`✅ Created welcome document in S3 bucket`);
+
+
+
+        // 9. Create the default knowledge base
+
+        console.log("Creating knowledge base with parameters:");
+        const defaultKbName = `kb-${account.name}`.toLowerCase().replace(/[^a-z0-9_-]/gi, '-').slice(0, 100);
+        console.log(JSON.stringify({
+            name: defaultKbName,
+            description: `Default knowledge base for ${account.name}`,
+            roleArn: SERVICE_ROLE_ARN,
+            knowledgeBaseConfiguration: {
+                type: 'VECTOR',
+                vectorKnowledgeBaseConfiguration: {
+                    embeddingModelArn: DEFAULT_MODEL_ARN
+                }
+            },
+            storageConfiguration: {
+                type: 'OPENSEARCH_SERVERLESS',
+                opensearchServerlessConfiguration: {
+                    collectionArn: collection.arn,
+                    vectorIndexName: `${confirmedCollectionName}-index`,
+                    fieldMapping: {
+                        vectorField: 'vector_embedding',
+                        textField: 'text_chunk',
+                        metadataField: 'metadata'
+                    }
+                }
+            }
+        }, null, 2));
+
+        const createKbResponse = await bedrock.send(new CreateKnowledgeBaseCommand({
+            name: defaultKbName,
+            description: `Default knowledge base for ${account.name}`,
+            roleArn: SERVICE_ROLE_ARN,
+            knowledgeBaseConfiguration: {
+                type: 'VECTOR',
+                vectorKnowledgeBaseConfiguration: {
+                    embeddingModelArn: DEFAULT_MODEL_ARN
+                }
+            },
+            storageConfiguration: {
+                type: 'OPENSEARCH_SERVERLESS',
+                opensearchServerlessConfiguration: {
+                    collectionArn: collection.arn,
+                    vectorIndexName: `${confirmedCollectionName}-index`,
+                    fieldMapping: {
+                        vectorField: 'vector_embedding',
+                        textField: 'text_chunk',
+                        metadataField: 'metadata'
+                    }
+                }
+            },
+            tags: createBedrockTags(tenantId)
+        }));
+
+        const bedrockKnowledgeBaseId = createKbResponse.knowledgeBase.knowledgeBaseId;
+        createdResources.push({ type: 'bedrockKnowledgeBase', id: bedrockKnowledgeBaseId });
+        console.log(`✅ Created default knowledge base: ${bedrockKnowledgeBaseId}`);
+
+        // 9. Create a data source for the knowledge base
+        const dataSourceResponse = await bedrock.send(new CreateDataSourceCommand({
+            knowledgeBaseId: bedrockKnowledgeBaseId,
+            name: `${defaultKbName.substring(0, 20)}-datasource`,
+            description: `Default data source for ${account.name}`,
+            dataSourceConfiguration: {
+                type: 'S3',
+                s3Configuration: {
+                    bucketArn: `arn:aws:s3:::${bucketName}`,
+                    inclusionPrefixes: [''] // Include all files in the bucket for the default KB
+                }
+            },
+            vectorIngestionConfiguration: {
+                chunkingConfiguration: {
+                    chunkingStrategy: 'FIXED_SIZE',
+                    fixedSizeChunkingConfiguration: {
+                        maxTokens: 300,
+                        overlapPercentage: 10
+                    }
+                }
+            },
+            tags: createBedrockTags(tenantId)
+        }));
+
+        const dataSourceId = dataSourceResponse.dataSource.dataSourceId;
+        createdResources.push({ type: 'bedrockDataSource', id: dataSourceId, knowledgeBaseId: bedrockKnowledgeBaseId });
+        console.log(`✅ Created data source: ${dataSourceId}`);
+
+        // 10. Start an initial ingestion job for the welcome document
+        const ingestionResponse = await bedrock.send(new StartIngestionJobCommand({
+            knowledgeBaseId: bedrockKnowledgeBaseId,
+            dataSourceId: dataSourceId,
+            description: 'Initial ingestion job'
+        }));
+
+        console.log(`✅ Started initial ingestion job: ${ingestionResponse.ingestionJob.ingestionJobId}`);
+
+        // 11. Return comprehensive information including the new knowledge base details
         return {
             bucketName,
             vectorStoreArn: collection.arn,
             collectionEndpoint: `https://${collection.collectionEndpoint}`,
-            tenantId
+            tenantId,
+            defaultKnowledgeBase: {
+                name: defaultKbName,
+                bedrockKnowledgeBaseId,
+                dataSourceId,
+                ingestionJobId: ingestionResponse.ingestionJob.ingestionJobId
+            }
         };
     } catch (err) {
         console.error(`❌ Failed to provision AWS resources for ${tenantId}:`, err);
@@ -285,11 +583,17 @@ async function cleanupResources(resources) {
         try {
             switch(resource.type) {
                 // Implement cleanup logic for each resource type
-                // This is a simplified version - you would implement more details
+                case 'bedrockDataSource':
+                    console.log(`Marking for cleanup: Bedrock data source: ${resource.id}`);
+                    // Bedrock cleanup would go here
+                    break;
+                case 'bedrockKnowledgeBase':
+                    console.log(`Marking for cleanup: Bedrock knowledge base: ${resource.id}`);
+                    // Bedrock cleanup would go here
+                    break;
                 case 's3Bucket':
                     console.log(`Cleaning up S3 bucket: ${resource.name}`);
                     // You would need to empty the bucket first before deletion
-                    // For brevity, I'm not including the full implementation
                     break;
                 case 'opensearchCollection':
                     console.log(`Marking for cleanup: OpenSearch collection: ${resource.name}`);
@@ -315,3 +619,5 @@ async function cleanupResources(resources) {
 }
 
 module.exports = { provisionTenantResources };
+
+
