@@ -128,69 +128,69 @@ async function provisionTenantResources(account) {
         // Add initial file with tagging
         await s3.send(new PutObjectCommand({
             Bucket: bucketName,
-            Key: 'init.txt',
+            Key: 'kb_welcome/init.txt',
             Body: 'Initial tenant file.',
             Tagging: `TenantId=${tenantId}&Project=fsds-rag&Environment=${ENVIRONMENT}&Owner=${encodeURIComponent(OWNER_EMAIL)}`
         }));
 
-        // 2. Create OpenSearch Serverless collection with encryption
-        console.log(`Creating OpenSearch Serverless collection: ${collectionName}`);
-        await opensearch.send(new CreateCollectionCommand({
-            name: collectionName,
-            type: 'VECTORSEARCH',
-            standalone: true
-        }));
-
-        createdResources.push({ type: 'opensearchCollection', name: collectionName });
-        console.log(`✅ Sent request to create collection: ${collectionName}`);
-
-        // 3. Wait for the collection to be available
-        const MAX_RETRIES = 100;
-        const RETRY_DELAY_MS = 3000;
-
-        let collection;
-        for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-            const response = await opensearch.send(new BatchGetCollectionCommand({
-                names: [collectionName]
-            }));
-            collection = response.collectionDetails?.[0];
-
-            if (collection?.status === 'ACTIVE' && collection?.arn && collection?.collectionEndpoint) break;
-
-            console.log(`⏳ Collection not ready (status: ${collection?.status}), retrying... (${attempt + 1}/${MAX_RETRIES})`);
-            await new Promise(res => setTimeout(res, RETRY_DELAY_MS));
-        }
-
-        if (!collection?.arn || !collection?.collectionEndpoint || collection?.status !== 'ACTIVE') {
-            throw new Error(`Collection not active after ${MAX_RETRIES} retries: ${collectionName} (status: ${collection?.status})`);
-        }
-
-        // Tag the collection
-
-        const resourceArn = collection.arn; // ✅ this is the correct full ARN with collection ID
-        const confirmedCollectionName = collection.name;
-        // Create tags in the correct format for OpenSearch Serverless
-        const ossTags = createResourceTags(tenantId).map(tag => ({
-            key: tag.Key,
-            value: tag.Value
-        }));
-
-        for (const tag of createResourceTags(tenantId)) {
-            ossTags[tag.Key] = tag.Value;
-        }
-
-        console.log(`✅ createResourceTags:`, ossTags);
-
-        await opensearch.send(new TagResourceCommand({
-            resourceArn,
-            tags: ossTags
-        }));
-
-        // 4. Create VPC endpoint only if VPC configuration is available
-        console.log(`✅ Starting step 4: VPC endpoint provisioning`);
-        console.log('hasVpcConfig:',hasVpcConfig)
-
-        let vpcEndpointId = null;
+        // // 2. Create OpenSearch Serverless collection with encryption
+        // console.log(`Creating OpenSearch Serverless collection: ${collectionName}`);
+        // await opensearch.send(new CreateCollectionCommand({
+        //     name: collectionName,
+        //     type: 'VECTORSEARCH',
+        //     standalone: true
+        // }));
+        //
+        // createdResources.push({ type: 'opensearchCollection', name: collectionName });
+        // console.log(`✅ Sent request to create collection: ${collectionName}`);
+        //
+        // // 3. Wait for the collection to be available
+        // const MAX_RETRIES = 100;
+        // const RETRY_DELAY_MS = 3000;
+        //
+        // let collection;
+        // for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+        //     const response = await opensearch.send(new BatchGetCollectionCommand({
+        //         names: [collectionName]
+        //     }));
+        //     collection = response.collectionDetails?.[0];
+        //
+        //     if (collection?.status === 'ACTIVE' && collection?.arn && collection?.collectionEndpoint) break;
+        //
+        //     console.log(`⏳ Collection not ready (status: ${collection?.status}), retrying... (${attempt + 1}/${MAX_RETRIES})`);
+        //     await new Promise(res => setTimeout(res, RETRY_DELAY_MS));
+        // }
+        //
+        // if (!collection?.arn || !collection?.collectionEndpoint || collection?.status !== 'ACTIVE') {
+        //     throw new Error(`Collection not active after ${MAX_RETRIES} retries: ${collectionName} (status: ${collection?.status})`);
+        // }
+        //
+        // // Tag the collection
+        //
+        // const resourceArn = collection.arn; // ✅ this is the correct full ARN with collection ID
+        // const confirmedCollectionName = collection.name;
+        // // Create tags in the correct format for OpenSearch Serverless
+        // const ossTags = createResourceTags(tenantId).map(tag => ({
+        //     key: tag.Key,
+        //     value: tag.Value
+        // }));
+        //
+        // for (const tag of createResourceTags(tenantId)) {
+        //     ossTags[tag.Key] = tag.Value;
+        // }
+        //
+        // console.log(`✅ createResourceTags:`, ossTags);
+        //
+        // await opensearch.send(new TagResourceCommand({
+        //     resourceArn,
+        //     tags: ossTags
+        // }));
+        //
+        // // 4. Create VPC endpoint only if VPC configuration is available
+        // console.log(`✅ Starting step 4: VPC endpoint provisioning`);
+        // console.log('hasVpcConfig:',hasVpcConfig)
+        //
+        // let vpcEndpointId = null;
 
         // commenting out while vpc endpoint not available in region
         // if (hasVpcConfig) {
@@ -243,35 +243,35 @@ async function provisionTenantResources(account) {
         // } else {
         //     console.warn(`⚠️ VPC configuration is missing or incomplete. Skipping VPC endpoint creation.`);
         // }
-
-// 5. Create network policy with fallback to public access if no VPC endpoint
-        const networkPolicyName = `net-${confirmedCollectionName}`;
-        const networkPolicy = {
-            name: networkPolicyName,
-            type: 'network',
-            description: `Network policy for collection ${confirmedCollectionName}`,
-            policy: JSON.stringify([
-                {
-                    AllowFromPublic: false,
-                    SourceServices: ["bedrock.amazonaws.com"],
-                    Rules: [
-                        {
-                            ResourceType: "collection",
-                            //Resource: [`collection/${resourceArn.split('/').pop()}`]
-                            Resource: [`collection/${confirmedCollectionName}`]
-                        }
-                    ]
-                }
-            ])
-        };
-
-        console.log("Network policy being sent to AWS:");
-        console.log(JSON.stringify(networkPolicy, null, 2));
-
-        await opensearch.send(new CreateSecurityPolicyCommand(networkPolicy));
-        createdResources.push({ type: 'networkPolicy', name: networkPolicyName });
-        console.log(`✅ Created network policy for ${confirmedCollectionName}`);
-
+//
+// // 5. Create network policy with fallback to public access if no VPC endpoint
+//         const networkPolicyName = `net-${confirmedCollectionName}`;
+//         const networkPolicy = {
+//             name: networkPolicyName,
+//             type: 'network',
+//             description: `Network policy for collection ${confirmedCollectionName}`,
+//             policy: JSON.stringify([
+//                 {
+//                     AllowFromPublic: false,
+//                     SourceServices: ["bedrock.amazonaws.com"],
+//                     Rules: [
+//                         {
+//                             ResourceType: "collection",
+//                             //Resource: [`collection/${resourceArn.split('/').pop()}`]
+//                             Resource: [`collection/${confirmedCollectionName}`]
+//                         }
+//                     ]
+//                 }
+//             ])
+//         };
+//
+//         console.log("Network policy being sent to AWS:");
+//         console.log(JSON.stringify(networkPolicy, null, 2));
+//
+//         await opensearch.send(new CreateSecurityPolicyCommand(networkPolicy));
+//         createdResources.push({ type: 'networkPolicy', name: networkPolicyName });
+//         console.log(`✅ Created network policy for ${confirmedCollectionName}`);
+//
 
 // // 6. Create data access policy
 //         // Create data access policy
@@ -317,60 +317,60 @@ async function provisionTenantResources(account) {
 //
 //
 //         await waitForPolicyPropagation(opensearch, dataAccessPolicyName,'data');
-
-// 6. Create data access policy
-        const dataAccessPolicyName = `dap-${confirmedCollectionName}`;
-
-// Define the list of IAM roles allowed to access the collection and index
-        const allowedPrincipals = [
-            `arn:aws:iam::${ACCOUNT_ID}:role/fsdsrag-bedrock-kb-role`,
-            `arn:aws:iam::${ACCOUNT_ID}:role/fsdsrag-bedrock-knowledgebase-role` // Uncommented this to ensure both roles have access
-        ];
-
-// For OpenSearch Serverless data access policies, we need to use the correct permissions and format
-        const dataAccessPolicyDocument = {
-            Rules: [
-                {
-                    // This covers all index operations including creation and updates
-                    ResourceType: "index",
-                    Resource: [`index/${confirmedCollectionName}/*`],
-                    Permission: ["aoss:*"] // This includes all index operations
-                }
-            ],
-            Principal: allowedPrincipals
-        };
-
-        const dataAccessPolicy = {
-            name: dataAccessPolicyName,
-            type: "data",
-            description: `Data access policy for collection ${confirmedCollectionName}`,
-            policy: JSON.stringify([dataAccessPolicyDocument])
-        };
-
-        console.log("Data access policy being sent to AWS:");
-        console.log(JSON.stringify(dataAccessPolicy, null, 2));
-
-        await opensearch.send(new CreateAccessPolicyCommand(dataAccessPolicy));
-        createdResources.push({ type: 'dataAccessPolicy', name: dataAccessPolicyName });
-        console.log(`✅ Created access policy for collection: ${confirmedCollectionName}`);
-
-// Add extended wait for policy propagation
-        console.log('🕒 Waiting for extended policy propagation...');
-        await new Promise(resolve => setTimeout(resolve, 30000)); // 30-second additional delay
-        console.log('✅ Additional wait completed');
-
-// Wait for policy propagation using your existing function
-        await waitForPolicyPropagation(opensearch, dataAccessPolicyName, 'data');
-
-// Add another delay after confirmation for good measure
-        console.log('🕒 Adding final policy propagation buffer...');
-        await new Promise(resolve => setTimeout(resolve, 15000)); // 15-second buffer
-        console.log('✅ Final wait completed - policies should be fully propagated');
+//
+// // 6. Create data access policy
+//         const dataAccessPolicyName = `dap-${confirmedCollectionName}`;
+//
+// // Define the list of IAM roles allowed to access the collection and index
+//         const allowedPrincipals = [
+//             `arn:aws:iam::${ACCOUNT_ID}:role/fsdsrag-bedrock-kb-role`,
+//             `arn:aws:iam::${ACCOUNT_ID}:role/fsdsrag-bedrock-knowledgebase-role` // Uncommented this to ensure both roles have access
+//         ];
+//
+// // For OpenSearch Serverless data access policies, we need to use the correct permissions and format
+//         const dataAccessPolicyDocument = {
+//             Rules: [
+//                 {
+//                     // This covers all index operations including creation and updates
+//                     ResourceType: "index",
+//                     Resource: [`index/${confirmedCollectionName}/*`],
+//                     Permission: ["aoss:*"] // This includes all index operations
+//                 }
+//             ],
+//             Principal: allowedPrincipals
+//         };
+//
+//         const dataAccessPolicy = {
+//             name: dataAccessPolicyName,
+//             type: "data",
+//             description: `Data access policy for collection ${confirmedCollectionName}`,
+//             policy: JSON.stringify([dataAccessPolicyDocument])
+//         };
+//
+//         console.log("Data access policy being sent to AWS:");
+//         console.log(JSON.stringify(dataAccessPolicy, null, 2));
+//
+//         await opensearch.send(new CreateAccessPolicyCommand(dataAccessPolicy));
+//         createdResources.push({ type: 'dataAccessPolicy', name: dataAccessPolicyName });
+//         console.log(`✅ Created access policy for collection: ${confirmedCollectionName}`);
+//
+// // Add extended wait for policy propagation
+//         console.log('🕒 Waiting for extended policy propagation...');
+//         await new Promise(resolve => setTimeout(resolve, 30000)); // 30-second additional delay
+//         console.log('✅ Additional wait completed');
+//
+// // Wait for policy propagation using your existing function
+//         await waitForPolicyPropagation(opensearch, dataAccessPolicyName, 'data');
+//
+// // Add another delay after confirmation for good measure
+//         console.log('🕒 Adding final policy propagation buffer...');
+//         await new Promise(resolve => setTimeout(resolve, 15000)); // 15-second buffer
+//         console.log('✅ Final wait completed - policies should be fully propagated');
 
 
         // ///////// Create vector Index ////////
         //
-        // async function createVectorIndex(endpoint, indexName, region = 'us-west-2') {
+        // async function createVectorIndex(endpoint, indexName, region = 'us-east-2') {
         //     const cleanHost = endpoint.replace(/^https?:\/\//, '');
         //
         //     const bodyPayload = {
@@ -498,137 +498,135 @@ For: ${account.name}
 
         await s3.send(new PutObjectCommand({
             Bucket: bucketName,
-            Key: 'welcome.md',
+            Key: 'kb_welcome/welcome.md',
             Body: welcomeContent,
             ContentType: 'text/markdown',
             Tagging: `TenantId=${tenantId}&Project=fsds-rag&Environment=${ENVIRONMENT}&Owner=${encodeURIComponent(OWNER_EMAIL)}`
         }));
         console.log(`✅ Created welcome document in S3 bucket`);
 
-
-
-        // 9. Create the default knowledge base
-        console.log(`📝 Knowledge base configuration:`);
-        const defaultKbName = `kb-${account.name}`.toLowerCase().replace(/[^a-z0-9_-]/gi, '-').slice(0, 100);
-
-        console.log(JSON.stringify({
-            name: defaultKbName,
-            roleArn: SERVICE_ROLE_ARN,
-            storageConfiguration: {
-                type: 'OPENSEARCH_SERVERLESS',
-                opensearchServerlessConfiguration: {
-                    collectionArn: collection.arn,
-                    vectorIndexName: `${confirmedCollectionName}-index`
-                }
-            }
-        }, null, 2));
-
-// Then proceed with the knowledge base creation
-
-        console.log("Creating knowledge base with parameters:");
-        console.log(`Using service role: ${SERVICE_ROLE_ARN}`);backend/aws/provisionTenantResources.js
-        console.log(JSON.stringify({
-            name: defaultKbName,
-            description: `Default knowledge base for ${account.name}`,
-            roleArn: SERVICE_ROLE_ARN,
-            knowledgeBaseConfiguration: {
-                type: 'VECTOR',
-                vectorKnowledgeBaseConfiguration: {
-                    embeddingModelArn: DEFAULT_MODEL_ARN
-                }
-            },
-            storageConfiguration: {
-                type: 'OPENSEARCH_SERVERLESS',
-                opensearchServerlessConfiguration: {
-                    collectionArn: collection.arn,
-                    vectorIndexName: `${confirmedCollectionName}-index`,
-                    fieldMapping: {
-                        vectorField: 'vector_embedding',
-                        textField: 'text_chunk',
-                        metadataField: 'metadata'
-                    }
-                }
-            }
-        }, null, 2));
-
-        const createKbResponse = await bedrock.send(new CreateKnowledgeBaseCommand({
-            name: defaultKbName,
-            description: `Default knowledge base for ${account.name}`,
-            roleArn: SERVICE_ROLE_ARN,
-            knowledgeBaseConfiguration: {
-                type: 'VECTOR',
-                vectorKnowledgeBaseConfiguration: {
-                    embeddingModelArn: DEFAULT_MODEL_ARN
-                }
-            },
-            storageConfiguration: {
-                type: 'OPENSEARCH_SERVERLESS',
-                opensearchServerlessConfiguration: {
-                    collectionArn: collection.arn,
-                    vectorIndexName: `${confirmedCollectionName}-index`,
-                    fieldMapping: {
-                        vectorField: 'vector_embedding',
-                        textField: 'text_chunk',
-                        metadataField: 'metadata'
-                    }
-                }
-            },
-            tags: createBedrockTags(tenantId)
-        }));
-
-        const bedrockKnowledgeBaseId = createKbResponse.knowledgeBase.knowledgeBaseId;
-        createdResources.push({ type: 'bedrockKnowledgeBase', id: bedrockKnowledgeBaseId });
-        console.log(`✅ Created default knowledge base: ${bedrockKnowledgeBaseId}`);
-
-        // 9. Create a data source for the knowledge base
-        const dataSourceResponse = await bedrock.send(new CreateDataSourceCommand({
-            knowledgeBaseId: bedrockKnowledgeBaseId,
-            name: `${defaultKbName.substring(0, 20)}-datasource`,
-            description: `Default data source for ${account.name}`,
-            dataSourceConfiguration: {
-                type: 'S3',
-                s3Configuration: {
-                    bucketArn: `arn:aws:s3:::${bucketName}`,
-                    inclusionPrefixes: [''] // Include all files in the bucket for the default KB
-                }
-            },
-            vectorIngestionConfiguration: {
-                chunkingConfiguration: {
-                    chunkingStrategy: 'FIXED_SIZE',
-                    fixedSizeChunkingConfiguration: {
-                        maxTokens: 300,
-                        overlapPercentage: 10
-                    }
-                }
-            },
-            tags: createBedrockTags(tenantId)
-        }));
-
-        const dataSourceId = dataSourceResponse.dataSource.dataSourceId;
-        createdResources.push({ type: 'bedrockDataSource', id: dataSourceId, knowledgeBaseId: bedrockKnowledgeBaseId });
-        console.log(`✅ Created data source: ${dataSourceId}`);
-
-        // 10. Start an initial ingestion job for the welcome document
-        const ingestionResponse = await bedrock.send(new StartIngestionJobCommand({
-            knowledgeBaseId: bedrockKnowledgeBaseId,
-            dataSourceId: dataSourceId,
-            description: 'Initial ingestion job'
-        }));
-
-        console.log(`✅ Started initial ingestion job: ${ingestionResponse.ingestionJob.ingestionJobId}`);
-
-        // 11. Return comprehensive information including the new knowledge base details
+//         // 9. Create the default knowledge base
+//         console.log(`📝 Knowledge base configuration:`);
+//         const defaultKbName = `kb-${account.name}`.toLowerCase().replace(/[^a-z0-9_-]/gi, '-').slice(0, 100);
+//
+//         console.log(JSON.stringify({
+//             name: defaultKbName,
+//             roleArn: SERVICE_ROLE_ARN,
+//             storageConfiguration: {
+//                 type: 'OPENSEARCH_SERVERLESS',
+//                 opensearchServerlessConfiguration: {
+//                     collectionArn: collection.arn,
+//                     vectorIndexName: `${confirmedCollectionName}-index`
+//                 }
+//             }
+//         }, null, 2));
+//
+// // Then proceed with the knowledge base creation
+//
+//         console.log("Creating knowledge base with parameters:");
+//         console.log(`Using service role: ${SERVICE_ROLE_ARN}`);backend/aws/provisionTenantResources.js
+//         console.log(JSON.stringify({
+//             name: defaultKbName,
+//             description: `Default knowledge base for ${account.name}`,
+//             roleArn: SERVICE_ROLE_ARN,
+//             knowledgeBaseConfiguration: {
+//                 type: 'VECTOR',
+//                 vectorKnowledgeBaseConfiguration: {
+//                     embeddingModelArn: DEFAULT_MODEL_ARN
+//                 }
+//             },
+//             storageConfiguration: {
+//                 type: 'OPENSEARCH_SERVERLESS',
+//                 opensearchServerlessConfiguration: {
+//                     collectionArn: collection.arn,
+//                     vectorIndexName: `${confirmedCollectionName}-index`,
+//                     fieldMapping: {
+//                         vectorField: 'vector_embedding',
+//                         textField: 'text_chunk',
+//                         metadataField: 'metadata'
+//                     }
+//                 }
+//             }
+//         }, null, 2));
+//
+//         const createKbResponse = await bedrock.send(new CreateKnowledgeBaseCommand({
+//             name: defaultKbName,
+//             description: `Default knowledge base for ${account.name}`,
+//             roleArn: SERVICE_ROLE_ARN,
+//             knowledgeBaseConfiguration: {
+//                 type: 'VECTOR',
+//                 vectorKnowledgeBaseConfiguration: {
+//                     embeddingModelArn: DEFAULT_MODEL_ARN
+//                 }
+//             },
+//             storageConfiguration: {
+//                 type: 'OPENSEARCH_SERVERLESS',
+//                 opensearchServerlessConfiguration: {
+//                     collectionArn: collection.arn,
+//                     vectorIndexName: `${confirmedCollectionName}-index`,
+//                     fieldMapping: {
+//                         vectorField: 'vector_embedding',
+//                         textField: 'text_chunk',
+//                         metadataField: 'metadata'
+//                     }
+//                 }
+//             },
+//             tags: createBedrockTags(tenantId)
+//         }));
+//
+//         const bedrockKnowledgeBaseId = createKbResponse.knowledgeBase.knowledgeBaseId;
+//         createdResources.push({ type: 'bedrockKnowledgeBase', id: bedrockKnowledgeBaseId });
+//         console.log(`✅ Created default knowledge base: ${bedrockKnowledgeBaseId}`);
+//
+//         // 9. Create a data source for the knowledge base
+//         const dataSourceResponse = await bedrock.send(new CreateDataSourceCommand({
+//             knowledgeBaseId: bedrockKnowledgeBaseId,
+//             name: `${defaultKbName.substring(0, 20)}-datasource`,
+//             description: `Default data source for ${account.name}`,
+//             dataSourceConfiguration: {
+//                 type: 'S3',
+//                 s3Configuration: {
+//                     bucketArn: `arn:aws:s3:::${bucketName}`,
+//                     inclusionPrefixes: [''] // Include all files in the bucket for the default KB
+//                 }
+//             },
+//             vectorIngestionConfiguration: {
+//                 chunkingConfiguration: {
+//                     chunkingStrategy: 'FIXED_SIZE',
+//                     fixedSizeChunkingConfiguration: {
+//                         maxTokens: 300,
+//                         overlapPercentage: 10
+//                     }
+//                 }
+//             },
+//             tags: createBedrockTags(tenantId)
+//         }));
+//
+//         const dataSourceId = dataSourceResponse.dataSource.dataSourceId;
+//         createdResources.push({ type: 'bedrockDataSource', id: dataSourceId, knowledgeBaseId: bedrockKnowledgeBaseId });
+//         console.log(`✅ Created data source: ${dataSourceId}`);
+//
+//         // 10. Start an initial ingestion job for the welcome document
+//         const ingestionResponse = await bedrock.send(new StartIngestionJobCommand({
+//             knowledgeBaseId: bedrockKnowledgeBaseId,
+//             dataSourceId: dataSourceId,
+//             description: 'Initial ingestion job'
+//         }));
+//
+//         console.log(`✅ Started initial ingestion job: ${ingestionResponse.ingestionJob.ingestionJobId}`);
+//
+//         // 11. Return comprehensive information including the new knowledge base details
         return {
             bucketName,
-            vectorStoreArn: collection.arn,
-            collectionEndpoint: `https://${collection.collectionEndpoint}`,
+            // vectorStoreArn: collection.arn,
+            // collectionEndpoint: `https://${collection.collectionEndpoint}`,
             tenantId,
-            defaultKnowledgeBase: {
-                name: defaultKbName,
-                bedrockKnowledgeBaseId,
-                dataSourceId,
-                ingestionJobId: ingestionResponse.ingestionJob.ingestionJobId
-            }
+            // defaultKnowledgeBase: {
+            //     name: defaultKbName,
+            //     bedrockKnowledgeBaseId,
+            //     dataSourceId,
+            //     ingestionJobId: ingestionResponse.ingestionJob.ingestionJobId
+            // }
         };
     } catch (err) {
         console.error(`❌ Failed to provision AWS resources for ${tenantId}:`, err);

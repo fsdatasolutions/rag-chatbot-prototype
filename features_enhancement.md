@@ -749,8 +749,8 @@ async function adjustServiceCapacity(metrics) {
 
 ```javascript
 // Multi-region configuration
-const PRIMARY_REGION = 'us-west-2';
-const SECONDARY_REGIONS = ['us-east-1', 'eu-west-1'];
+const PRIMARY_REGION = 'us-east-2';
+const SECONDARY_REGIONS = ['us-west-1', 'eu-west-1'];
 
 async function createMultiRegionResources(tenantId, primaryResources) {
   const replicatedResources = {};

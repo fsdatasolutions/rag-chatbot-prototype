@@ -9,3 +9,7 @@ docker-compose up -d
 
 env $(cat .env.super | xargs) npx prisma migrate dev
 env $(cat .env.super | xargs) npm run seed
+
+
+open prisma database 
+-- npx prisma studio

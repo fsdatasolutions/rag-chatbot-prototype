@@ -99,8 +99,11 @@ app.use('/api/knowledge-bases', require('./routes/knowledgeBase'));
 app.use('/api/departments', require('./routes/departments'));
 app.use('/api/chat-history', require('./routes/chatHistory'));
 app.use('/api/chat-sessions', require('./routes/chatSessions'));
+app.use('/api/models', require('./routes/models'));
+app.use('/api/storage', require('./routes/storage'));
 
 const PORT = process.env.PORT || 5001;
+console.log("📦 knowledgeBase.js routes loaded...");
 app.listen(PORT, () => {
     console.log(`Backend server running on port ${PORT} using model ID: ${MODEL_ID}`);
 });

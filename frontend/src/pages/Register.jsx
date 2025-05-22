@@ -23,7 +23,7 @@ function Register() {
         e.preventDefault();
         setIsProvisioning(true);
         try {
-            await axios.post('http://localhost:5001/api/auth/register', form);
+            await axios.post('/api/auth/register', form);
             toast.success('Account created! Redirecting to login...');
             setTimeout(() => navigate('/login'), 2000);
         } catch (err) {

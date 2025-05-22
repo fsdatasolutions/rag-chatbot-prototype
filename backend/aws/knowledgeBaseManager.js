@@ -16,7 +16,7 @@ const prisma = require('../db/prisma');
 const { createOpenSearchIndex } = require('./createOpenSearchIndex');
 
 // Configuration
-const REGION = process.env.AWS_REGION || 'us-west-2';
+const REGION = process.env.AWS_REGION || 'us-east-2';
 const ACCOUNT_ID = process.env.AWS_ACCOUNT_ID;
 const DEFAULT_MODEL_ARN = process.env.BEDROCK_EMBEDDING_MODEL_ARN ||
     'arn:aws:bedrock:us-west-2::foundation-model/amazon.titan-embed-text-v1';

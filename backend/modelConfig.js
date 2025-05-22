@@ -1,5 +1,5 @@
 // modelConfig.js
 module.exports = {
-    defaultModel: process.env.MODEL_ID || "anthropic.claude-v2", // Default model ID
-    region: process.env.AWS_REGION || "us-west-2", // Default AWS Region
+    defaultModel: "meta.llama3-3-70b-instruct-v1:0",
+    region: "us-east-2",
 };

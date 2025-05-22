@@ -35,6 +35,10 @@ model KnowledgeBase {
   userAssignments        UserKnowledgeBase[]
   account                Account  @relation(fields: [accountId], references: [id])
   createdAt              DateTime @default(now())
+  embeddingModel         String?
+  s3Prefix               String?
+  vectorIndexName        String?
+  vectorIndexArn  String?
 }
 
 model User {

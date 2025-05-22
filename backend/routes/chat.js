@@ -24,6 +24,7 @@ const DEFAULT_KNOWLEDGE_BASE_ID = '8P6ZV0FHYN';
 
 router.post('/', authenticateToken, async (req, res) => {
     const { query, knowledgeBaseId= DEFAULT_KNOWLEDGE_BASE_ID, modelId = MODEL_ID, sessionId } = req.body;
+    console.log('loading chat route');
 
     if (!query ) {
         return res.status(400).json({ error: 'Missing query ' });
@@ -46,27 +47,53 @@ router.post('/', authenticateToken, async (req, res) => {
         const kbToUse = knowledgeBaseId || DEFAULT_KNOWLEDGE_BASE_ID;
 
         // 🔍 Step 2: Retrieve KB context
-        const retrieveCommand = new RetrieveCommand({
-            knowledgeBaseId: kbToUse,
-            retrievalQuery: { text: query },
-            retrievalConfiguration: {
-                vectorSearchConfiguration: {
-                    numberOfResults: 3
-                }
+        let context = '';
+
+        if (knowledgeBaseId !== 'none') {
+            try {
+                const retrieveCommand = new RetrieveCommand({
+                    knowledgeBaseId,
+                    retrievalQuery: { text: query },
+                    retrievalConfiguration: {
+                        vectorSearchConfiguration: { numberOfResults: 3 }
+                    }
+                });
+
+                const retrievalResponse = await bedrockAgentClient.send(retrieveCommand);
+                const contextDocs = retrievalResponse.retrievalResults || [];
+                context = contextDocs.map((doc, idx) => `${idx + 1}. ${doc.content.text}`).join('\n');
+            } catch (err) {
+                console.warn('⚠️ Failed to retrieve from KB. Proceeding without context.', err);
             }
-        });
+        }
 
-        const retrievalResponse = await bedrockAgentClient.send(retrieveCommand);
-        const contextDocs = retrievalResponse.retrievalResults || [];
-        const context = contextDocs.map((doc, idx) => `${idx + 1}. ${doc.content.text}`).join('\n');
+        if (knowledgeBaseId === 'none') {
+            console.log(`🔍 User ${req.user.userId} is chatting without a KB`);
+        }
 
-        const inputPrompt = `System: You are a helpful assistant.\n\nContext:\n${context}\n\nHuman: ${query}\nAssistant:`;
+        const inputPrompt = `System: You are a helpful assistant.\n\nContext:\n${context || 'None'}\n\nHuman: ${query}\nAssistant:`;
+        console.log("🧠 Using model:", modelId);
 
-        const inputPayload = JSON.stringify({
-            prompt: inputPrompt,
-            max_tokens_to_sample: 1000,
-            temperature: 0.5
-        });
+        let inputPayload;
+
+        if (
+            modelId.startsWith('anthropic.') ||
+            modelId.startsWith('meta.') // ← add this check
+        ) {
+            inputPayload = JSON.stringify({
+                prompt: inputPrompt,
+                max_tokens_to_sample: 1000,
+                temperature: 0.5
+            });
+        } else {
+            inputPayload = JSON.stringify({
+                inputText: inputPrompt,
+                textGenerationConfig: {
+                    maxTokenCount: 1000,
+                    temperature: 0.5
+                }
+            });
+        }
 
         const invokeCommand = new InvokeModelCommand({
             modelId,

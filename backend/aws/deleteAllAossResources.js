@@ -9,7 +9,7 @@ const {
     DeleteAccessPolicyCommand
 } = require("@aws-sdk/client-opensearchserverless");
 
-const REGION = process.env.AWS_REGION || 'us-west-2';
+const REGION = process.env.AWS_REGION || 'us-east-2';
 const client = new OpenSearchServerlessClient({ region: REGION });
 
 async function deleteAllCollections() {

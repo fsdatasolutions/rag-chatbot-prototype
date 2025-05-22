@@ -14,7 +14,7 @@ function Departments() {
     useEffect(() => {
         const fetchDepartments = async () => {
             try {
-                const res = await axios.get('http://localhost:5001/api/departments', {
+                const res = await axios.get('/api/departments', {
                     headers: { Authorization: `Bearer ${auth.token}` }
                 });
                 setDepartments(res.data);
@@ -28,7 +28,7 @@ function Departments() {
     const handleSubmit = async (e) => {
         e.preventDefault();
         try {
-            const res = await axios.post('http://localhost:5001/api/departments', { name: newDept }, {
+            const res = await axios.post('/api/departments', { name: newDept }, {
                 headers: { Authorization: `Bearer ${auth.token}` }
             });
             setDepartments((prev) => [...prev, res.data]);

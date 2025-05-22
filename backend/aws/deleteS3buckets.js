@@ -9,7 +9,7 @@ const {
     DeleteBucketCommand
 } = require('@aws-sdk/client-s3');
 
-const REGION = process.env.AWS_REGION || 'us-west-2';
+const REGION = process.env.AWS_REGION || 'us-east-2';
 const s3 = new S3Client({ region: REGION });
 
 async function emptyBucket(bucketName) {

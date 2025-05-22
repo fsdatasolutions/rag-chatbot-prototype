@@ -13,10 +13,6 @@ const {
     deleteKnowledgeBase,
     listIngestionJobs
 } = require('../aws/knowledgeBaseManager');
-const {
-    BedrockAgentClient,
-    ListKnowledgeBasesCommand
-} = require('@aws-sdk/client-bedrock-agent');
 
 // GET all KBs for current account
 router.get('/', authenticateToken, async (req, res) => {
@@ -94,47 +90,6 @@ router.get('/user-accessible', authenticateToken, async (req, res) => {
         res.status(500).json({ error: 'Failed to load accessible knowledge bases' });
     }
 });
-
-// PUT /api/knowledge-bases/link-to-account
-router.put('/link-to-account', authenticateToken, async (req, res) => {
-    console.log("🛠️ Route hit: link-to-account");
-    const { knowledgeBaseId } = req.body;
-    const accountId = req.user.accountId;
-
-    try {
-        const bedrockClient = new BedrockAgentClient({ region: process.env.AWS_REGION });
-        const result = await bedrockClient.send(new ListKnowledgeBasesCommand({}));
-        const awsKB = result.knowledgeBaseSummaries.find(kb => kb.knowledgeBaseId === knowledgeBaseId);
-
-        if (!awsKB) return res.status(404).json({ error: 'AWS KB not found' });
-
-        const existing = await prisma.knowledgeBase.findFirst({
-            where: {
-                bedrockKnowledgeBaseId: knowledgeBaseId,
-                accountId
-            }
-        });
-
-        if (existing) {
-            return res.status(400).json({ error: 'KB already linked to this account' });
-        }
-
-        await prisma.knowledgeBase.create({
-            data: {
-                name: awsKB.name,
-                description: awsKB.description || '',
-                bedrockKnowledgeBaseId: knowledgeBaseId,
-                accountId
-            }
-        });
-
-        res.json({ success: true });
-    } catch (err) {
-        console.error('Linking KB failed:', err);
-        res.status(500).json({ error: 'Failed to link knowledge base' });
-    }
-});
-
 
 // GET /api/knowledge-bases/:id
 router.get('/:id', authenticateToken, async (req, res) => {
@@ -428,8 +383,43 @@ router.post('/:id/documents', authenticateToken, upload.array('files'), async (r
     }
 });
 
-router.get('/debug-ping', (req, res) => {
-    res.send('✅ knowledgeBase.js is active');
+// PUT /api/knowledge-bases/link-to-account
+router.put('/knowledge-bases/link-to-account', authenticateToken, async (req, res) => {
+    const { knowledgeBaseId } = req.body;
+    const accountId = req.user.accountId;
+
+    try {
+        const bedrockClient = new BedrockAgentClient({ region: process.env.AWS_REGION });
+        const list = await bedrockClient.send(new ListKnowledgeBasesCommand({}));
+        const awsKB = list.knowledgeBaseSummaries.find(kb => kb.knowledgeBaseId === knowledgeBaseId);
+
+        if (!awsKB) return res.status(404).json({ error: 'AWS KB not found' });
+
+        const existing = await prisma.knowledgeBase.findFirst({
+            where: {
+                bedrockKnowledgeBaseId: knowledgeBaseId,
+                accountId
+            }
+        });
+
+        if (existing) {
+            return res.status(400).json({ error: 'KB already linked to this account' });
+        }
+
+        await prisma.knowledgeBase.create({
+            data: {
+                name: awsKB.name,
+                description: awsKB.description || '',
+                bedrockKnowledgeBaseId: knowledgeBaseId,
+                accountId
+            }
+        });
+
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Linking KB failed:', err);
+        res.status(500).json({ error: 'Failed to link knowledge base' });
+    }
 });
 
 // GET /api/aws-bedrock/knowledge-bases — Fetch AWS KBs for tenant that aren't in DB
