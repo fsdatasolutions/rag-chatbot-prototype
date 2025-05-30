@@ -1,0 +1,174 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Account {
+  id                 String   @id @default(uuid())
+  name               String
+  storageBucket      String?
+  vectorStoreId      String?
+  collectionEndpoint String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  knowledgeBases             KnowledgeBase[]
+  users                      User[]
+  departments                Department[]
+  chatMessages               ChatMessage[]
+  chatSessions               ChatSession[]
+  departmentModelAssignments DepartmentModelAssignment[]
+  userModelAssignments       UserModelAssignment[]
+}
+
+model KnowledgeBase {
+  id              String   @id @default(uuid())
+  accountId       String
+  name            String
+  externalKbId    String
+  description     String?
+  departmentId    String?
+  embeddingModel  String?
+  storagePath     String?
+  vectorIndexName String?
+  vectorIndexArn  String?
+  createdAt       DateTime @default(now())
+
+  account         Account             @relation(fields: [accountId], references: [id])
+  department      Department?         @relation(fields: [departmentId], references: [id])
+  userAssignments UserKnowledgeBase[]
+}
+
+model User {
+  id           String   @id @default(uuid())
+  accountId    String
+  email        String   @unique
+  passwordHash String
+  role         UserRole
+  departmentId String?
+  createdAt    DateTime @default(now())
+
+  account              Account               @relation(fields: [accountId], references: [id])
+  department           Department?           @relation(fields: [departmentId], references: [id])
+  kbAssignments        UserKnowledgeBase[]
+  chatMessages         ChatMessage[]
+  chatSessions         ChatSession[]
+  userModelAssignments UserModelAssignment[]
+}
+
+model Department {
+  id        String   @id @default(uuid())
+  name      String
+  accountId String
+  createdAt DateTime @default(now())
+
+  account          Account                     @relation(fields: [accountId], references: [id])
+  users            User[]
+  knowledgeBases   KnowledgeBase[]
+  modelAssignments DepartmentModelAssignment[]
+}
+
+model UserKnowledgeBase {
+  userId          String
+  knowledgeBaseId String
+  assignedAt      DateTime @default(now())
+
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  knowledgeBase KnowledgeBase @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
+
+  @@id([userId, knowledgeBaseId])
+}
+
+enum UserRole {
+  admin
+  user
+}
+
+enum ChatRole {
+  user
+  assistant
+}
+
+model ChatSession {
+  id        String   @id @default(uuid())
+  title     String
+  userId    String
+  accountId String
+  createdAt DateTime @default(now())
+
+  user     User          @relation(fields: [userId], references: [id])
+  account  Account       @relation(fields: [accountId], references: [id])
+  messages ChatMessage[]
+
+  @@index([userId])
+  @@index([accountId])
+}
+
+model ChatMessage {
+  id         String   @id @default(uuid())
+  sessionId  String?
+  userId     String
+  accountId  String
+  role       ChatRole
+  content    String
+  modelName  String? // 👈 Add this line
+  createdAt  DateTime @default(now())
+
+  session    ChatSession? @relation(fields: [sessionId], references: [id])
+  user       User         @relation(fields: [userId], references: [id])
+  account    Account      @relation(fields: [accountId], references: [id])
+
+  @@index([sessionId])
+  @@index([accountId])
+}
+
+model Model {
+  id              String   @id @default(uuid())
+  name            String
+  providerModelId String   @unique
+  provider        String // e.g. 'openai', 'ollama'
+  endpoint        String
+  apiKey          String?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  departmentModelAssignments DepartmentModelAssignment[]
+  userModelAssignments       UserModelAssignment[]
+}
+
+model DepartmentModelAssignment {
+  id           String   @id @default(uuid())
+  accountId    String
+  departmentId String
+  modelId      String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @default(now())
+
+  account    Account    @relation(fields: [accountId], references: [id])
+  department Department @relation(fields: [departmentId], references: [id])
+  model      Model      @relation(fields: [modelId], references: [id])
+
+  @@unique([departmentId, modelId])
+  @@index([accountId])
+}
+
+model UserModelAssignment {
+  id        String   @id @default(uuid())
+  accountId String
+  userId    String
+  modelId   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now())
+
+  account Account @relation(fields: [accountId], references: [id])
+  user    User    @relation(fields: [userId], references: [id])
+  model   Model   @relation(fields: [modelId], references: [id])
+
+  @@unique([userId, modelId])
+  @@index([accountId])
+}

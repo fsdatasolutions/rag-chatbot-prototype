@@ -1,0 +1,16 @@
+{
+  "name": "rag-chatbot-prototype",
+  "private": true,
+  "scripts": {
+    "start": "concurrently \"npm run server\" \"npm run client\"",
+    "server": "npm --prefix backend run dev",
+    "client": "npm --prefix frontend start"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "dependencies": {
+    "@aws-sdk/credential-provider-env": "^3.812.0",
+    "weaviate-ts-client": "^2.2.0"
+  }
+}

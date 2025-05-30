@@ -1,0 +1,4 @@
+{
+  "ignore": ["*.test.js", "frontend/", "node_modules/"],
+  "ext": "js,json"
+}
